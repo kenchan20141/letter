@@ -95,6 +95,54 @@
         .s-miss { background: #fee2e2; color: var(--red); }
         .s-free { background: #e0f2fe; color: #0284c7; }
 
+        /* --- Heatmap Table Styles (NEW) --- */
+        .heatmap-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            display: inline-block;
+            vertical-align: middle;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: auto;
+        }
+        .heatmap-box:hover { transform: scale(1.2); }
+        .heatmap-ok { background-color: #22c55e; }
+        .heatmap-late { background-color: #f59e0b; }
+        .heatmap-miss { background-color: #ef4444; }
+        .heatmap-pending { background-color: #e2e8f0; }
+
+        .heatmap-table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            white-space: nowrap;
+        }
+        .heatmap-table th, .heatmap-table td { 
+            padding: 12px 10px; 
+            text-align: center; 
+            border-bottom: 1px solid var(--border); 
+            font-size: 0.95rem; 
+            color: var(--text-main);
+        }
+        .heatmap-table th:first-child, .heatmap-table td:first-child { 
+            text-align: left; 
+            position: sticky; 
+            left: 0; 
+            background: #fff; 
+            z-index: 1; 
+            font-weight: 500; 
+            box-shadow: 2px 0 5px rgba(0,0,0,0.03); 
+            border-right: 1px solid var(--border);
+        }
+        .heatmap-table thead th { 
+            background: #f8fafc; 
+            font-weight: 600; 
+            color: var(--text-muted); 
+            border-bottom: 2px solid var(--border);
+        }
+        .heatmap-table thead th:first-child { z-index: 2; }
+        .task-col { width: 34px; padding: 12px 2px !important; }
+
         /* --- Reading Modals --- */
         .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(5px);}
         #auth-screen { background: var(--bg); backdrop-filter: none; }
@@ -241,6 +289,7 @@
                 <div class="tabs">
                     <button class="tab-btn active" id="tab-student" onclick="switchRecordTab('student')">依學生查看</button>
                     <button class="tab-btn" id="tab-task" onclick="switchRecordTab('task')">依任務查看</button>
+                    <button class="tab-btn" id="tab-overview" onclick="switchRecordTab('overview')">總覽圖表</button>
                 </div>
                 
                 <div style="margin-bottom: 20px; display: flex; gap: 10px;">
@@ -531,7 +580,7 @@
         // 註銷帳號功能 (安全優化版)
         // ==========================================
         function deleteUserAccount(uid, userName) {
-            const confirmMsg = `⚠️ 嚴重警告！\n您即將註銷學生「${userName}」的帳號。\n\n此操作將會：\n1. 徹底刪除該學生的所有個人資料、積分與道具。\n2. 清空該學生的私人視角信箱與個人相片。\n\n【保留機制】：\n為了不影響其他已配對的學生，該學生寄出或收到的「常規信件內容」將會被保留在對方的信箱中，但署名會自動變為「已註銷的帳號」。\n\n您確定要繼續嗎？`;
+            const confirmMsg = `⚠️ 嚴重警告！\n您即滿註銷學生「${userName}」的帳號。\n\n此操作將會：\n1. 徹底刪除該學生的所有個人資料、積分與道具。\n2. 清空該學生的私人視角信箱與個人相片。\n\n【保留機制】：\n為了不影響其他已配對的學生，該學生寄出或收到的「常規信件內容」將會被保留在對方的信箱中，但署名會自動變為「已註銷的帳號」。\n\n您確定要繼續嗎？`;
 
             if (!confirm(confirmMsg)) return;
 
@@ -772,12 +821,13 @@
         }
 
         // ==========================================
-        // 作業批閱邏輯 (精準讀取量優化版)
+        // 作業批閱邏輯 (精準讀取量優化版 + 總覽圖表)
         // ==========================================
         function switchRecordTab(tab) {
             currentRecordTab = tab;
             document.getElementById('tab-student').className = tab === 'student' ? 'tab-btn active' : 'tab-btn';
             document.getElementById('tab-task').className = tab === 'task' ? 'tab-btn active' : 'tab-btn';
+            document.getElementById('tab-overview').className = tab === 'overview' ? 'tab-btn active' : 'tab-btn';
             renderRecords();
         }
 
@@ -836,10 +886,11 @@
 
                 container.innerHTML = '';
                 
-                // 自由撰寫邏輯
+                // 自由撰寫邏輯 (隱藏任務與總覽分頁)
                 if (recType === 'free') {
                     document.getElementById('tab-task').style.display = 'none';
-                    if (currentRecordTab === 'task') {
+                    document.getElementById('tab-overview').style.display = 'none';
+                    if (currentRecordTab === 'task' || currentRecordTab === 'overview') {
                         currentRecordTab = 'student';
                         document.getElementById('tab-student').className = 'tab-btn active';
                     }
@@ -876,12 +927,106 @@
                     return;
                 }
          
+                // 常規與隨機任務邏輯 (顯示所有分頁)
                 document.getElementById('tab-task').style.display = 'inline-block';
+                document.getElementById('tab-overview').style.display = 'inline-block';
+
                 const arrayName = recType === 'reading' ? 'tasks' : 'randomTasks';
                 const tasks = getArrayFromFirebase(dbClasses[cid][arrayName]);
                 const dataArray = recType === 'reading' ? Object.values(dbLetters) : Object.values(dbRandomSubs);
          
-                if (currentRecordTab === 'student') {
+                if (currentRecordTab === 'overview') {
+                    // --- 總覽圖表渲染邏輯 ---
+                    if (tasks.length === 0) {
+                        container.innerHTML = `<p style="color:var(--text-muted);">此班級尚未派發任務。</p>`;
+                        return;
+                    }
+
+                    let html = `
+                        <div style="margin-bottom: 15px; font-size: 0.9rem; color: var(--text-muted); display: flex; gap: 15px;">
+                            <div style="display:flex; align-items:center; gap:5px;"><div class="heatmap-box heatmap-ok"></div> 準時</div>
+                            <div style="display:flex; align-items:center; gap:5px;"><div class="heatmap-box heatmap-late"></div> 遲交</div>
+                            <div style="display:flex; align-items:center; gap:5px;"><div class="heatmap-box heatmap-miss"></div> 欠交</div>
+                            <div style="display:flex; align-items:center; gap:5px;"><div class="heatmap-box heatmap-pending"></div> 待繳交</div>
+                        </div>
+                        <div style="overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: #fff;">
+                            <table class="heatmap-table">
+                                <thead>
+                                    <tr>
+                                        <th>學生姓名</th>
+                    `;
+                    tasks.forEach((_, idx) => {
+                        html += `<th class="task-col">${idx+1}</th>`;
+                    });
+                    html += `
+                                        <th style="padding-left: 20px;">🟩 準時</th>
+                                        <th>🟨 遲交</th>
+                                        <th>🟥 欠交</th>
+                                        <th>⬜ 待繳</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+
+                    const now = new Date();
+                    now.setHours(0,0,0,0);
+
+                    studentsInClass.forEach(uid => {
+                        const u = dbUsers[uid];
+                        let okCount = 0, lateCount = 0, missCount = 0, pendingCount = 0;
+                        let rowHtml = `<tr><td>${escapeHtml(u.name)}</td>`;
+
+                        tasks.forEach((dateStr, idx) => {
+                            const record = recType === 'reading' ? findLetterSafe(uid, dateStr, idx, dataArray) : findRandomSafe(uid, dateStr, dataArray);
+                            
+                            let actualDeadlineDate = new Date(dateStr);
+                            if (recType === 'reading') actualDeadlineDate.setDate(actualDeadlineDate.getDate() + 2);
+                            
+                            const deadlineTime = new Date(actualDeadlineDate);
+                            deadlineTime.setHours(0,0,0,0);
+                            const displayDeadline = `${actualDeadlineDate.getFullYear()}-${String(actualDeadlineDate.getMonth() + 1).padStart(2, '0')}-${String(actualDeadlineDate.getDate()).padStart(2, '0')}`;
+                            
+                            if (record) {
+                                const submitTime = new Date(record.timestamp);
+                                submitTime.setHours(0,0,0,0);
+                                
+                                if (submitTime <= deadlineTime) {
+                                    okCount++;
+                                    rowHtml += `<td class="task-col"><div class="heatmap-box heatmap-ok" title="第${idx+1}回：準時 (期限: ${displayDeadline})"></div></td>`;
+                                } else {
+                                    lateCount++;
+                                    rowHtml += `<td class="task-col"><div class="heatmap-box heatmap-late" title="第${idx+1}回：遲交 (期限: ${displayDeadline})"></div></td>`;
+                                }
+                            } else {
+                                if (deadlineTime >= now) {
+                                    pendingCount++;
+                                    rowHtml += `<td class="task-col"><div class="heatmap-box heatmap-pending" title="第${idx+1}回：待繳交 (期限: ${displayDeadline})"></div></td>`;
+                                } else {
+                                    missCount++;
+                                    rowHtml += `<td class="task-col"><div class="heatmap-box heatmap-miss" title="第${idx+1}回：欠交 (期限: ${displayDeadline})"></div></td>`;
+                                }
+                            }
+                        });
+
+                        rowHtml += `
+                            <td style="padding-left: 20px; font-weight:600; color:var(--green);">${okCount}</td>
+                            <td style="font-weight:600; color:var(--yellow);">${lateCount}</td>
+                            <td style="font-weight:600; color:var(--red);">${missCount}</td>
+                            <td style="font-weight:600; color:var(--text-muted);">${pendingCount}</td>
+                        </tr>`;
+                        
+                        html += rowHtml;
+                    });
+
+                    if(studentsInClass.length === 0) {
+                        html += `<tr><td colspan="${tasks.length + 5}" style="text-align:center; color:var(--text-muted);">此班級目前沒有學生。</td></tr>`;
+                    }
+
+                    html += `</tbody></table></div>`;
+                    container.innerHTML = html;
+
+                } else if (currentRecordTab === 'student') {
+                    // --- 依學生查看邏輯 ---
                     studentsInClass.forEach(uid => {
                         const u = dbUsers[uid];
                         let html = `<div class="list-item"><div class="list-header" onclick="toggleAccordion('stu-${uid}')"><div class="list-title">🧑‍🎓 ${escapeHtml(u.name)} <span class="list-subtitle">${escapeHtml(u.email)}</span></div><span style="font-size:0.8rem; color:var(--text-muted);">展開查看任務 ▾</span></div><div class="list-body" id="acc-body-stu-${uid}"><div class="grid-container">`;
@@ -893,7 +1038,9 @@
                         html += `</div></div></div>`; container.innerHTML += html;
                     });
                     if(studentsInClass.length === 0) container.innerHTML = `<p style="color:var(--text-muted);">此班級目前沒有學生。</p>`;
+
                 } else {
+                    // --- 依任務查看邏輯 ---
                     tasks.forEach((dateStr, idx) => {
                         let actualDeadlineDate = new Date(dateStr);
                         if (recType === 'reading') actualDeadlineDate.setDate(actualDeadlineDate.getDate() + 2);
