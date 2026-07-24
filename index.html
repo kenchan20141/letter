@@ -5017,20 +5017,43 @@ function processRandomTask(data) {
             });
         }
 
-        function updatePlantStateLogic(p) { 
+       function updatePlantStateLogic(p) { 
             if(p.isDead) return buildPlantIn3D(p.type, p.growth, p.wilt); 
-            let today = new Date(); today.setHours(0,0,0,0); let lastW = new Date(p.lastWatered); lastW.setHours(0,0,0,0); 
-            let daysPassed = Math.floor((today - lastW) / 86400000); let needsUpdate = false; 
+            let today = new Date(); today.setHours(0,0,0,0); 
+            let lastW = new Date(p.lastWatered); lastW.setHours(0,0,0,0); 
+            let daysPassed = Math.floor((today - lastW) / 86400000); 
+            let needsUpdate = false; 
             
             if (daysPassed > 1) { 
                 p.wilt = Math.min(7, p.wilt + (daysPassed - 1)); 
-                if (p.wilt >= 7 && !p.isDead) { p.isDead = true; setTimeout(() => showToast("🥀 很遺憾，因為長時間忘記澆水，您的植物已經枯萎了..."), 1500); }
+                if (p.wilt >= 7 && !p.isDead) { 
+                    p.isDead = true; 
+                    setTimeout(() => showToast("🥀 很遺憾，因為長時間忘記澆水，您的植物已經枯萎了..."), 1500); 
+                }
+                
+                // 👇 關鍵修復：必須把「上次澆水時間」推進到「昨天」，否則系統會在一秒內陷入無限迴圈扣血！
+                p.lastWatered = today.getTime() - 86400000; 
+
                 needsUpdate = true; 
             } 
             
             let calculatedDays = Math.floor((Date.now() - p.plantedAt) / 86400000) || 0;
-            if (p.daysAccompanied !== calculatedDays) { p.daysAccompanied = calculatedDays; needsUpdate = true; }
-            if (needsUpdate) db.ref(`users/${currentUser.uid}/plant`).update({ type: p.type, growth: p.growth, wilt: p.wilt, isDead: p.isDead, daysAccompanied: p.daysAccompanied }); 
+            if (p.daysAccompanied !== calculatedDays) { 
+                p.daysAccompanied = calculatedDays; 
+                needsUpdate = true; 
+            }
+            
+            if (needsUpdate) {
+                // 👇 同步寫入 lastWatered，徹底阻斷無盡扣血的迴圈
+                db.ref(`users/${currentUser.uid}/plant`).update({ 
+                    type: p.type, 
+                    growth: p.growth, 
+                    wilt: p.wilt, 
+                    isDead: p.isDead, 
+                    daysAccompanied: p.daysAccompanied,
+                    lastWatered: p.lastWatered 
+                }); 
+            }
             buildPlantIn3D(p.type, p.growth, p.wilt); 
         }
 
