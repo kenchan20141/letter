@@ -5082,14 +5082,15 @@ function processRandomTask(data) {
         let repliesData = [], inboxReadingData = [], inboxRandomData = []; 
         hasUnrepliedLetters = false; let uRep = false, uIn = false; 
         
-        all.forEach(t => { 
+       all.forEach(t => { 
             if (t.isSender) { 
                 // 我寄出的閱讀心得，收到回覆後才會進入「對我的回覆」列表
                 if (t.type !== 'random' && t.hasBeenRepliedTo) { 
                     repliesData.push(t); 
-                    if(!t.hasReplied) hasUnrepliedLetters = true; 
+                    // 👇 將這一行刪除或註解，打破強制回信的無限迴圈！
+                    // if(!t.hasReplied) hasUnrepliedLetters = true; 
                     if(t.hasUnread) uRep = true; 
-                } 
+                }
                 // (寄出的探索任務由於沒有回信，就不顯示在此列表，用家已在任務板看見完成狀態)
             } else { 
                 // 我收到的信件 (分為探索 / 閱讀)
