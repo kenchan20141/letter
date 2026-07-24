@@ -4579,9 +4579,16 @@ window.openFreeReadingEditor = function() {
                 if (currentChatRef) currentChatRef.off(); 
                 currentChatRef = db.ref(`conversations/${id}`);
                 
-               currentChatRef.once('value').then(cSnap => {
+              currentChatRef.once('value').then(cSnap => {
                     const messages = cSnap.val() || {};
                     const msgKeys = Object.keys(messages); // 👈 確保這行有正確保留，不能變成 sgKeys
+                    
+                    // 👇 加入這段防護：如果信件真的是空的，彈出提示並中斷，防止畫面變黑
+                    if (msgKeys.length === 0) {
+                        alert("⚠️ 這封信的內容似乎在傳遞中遺失了。");
+                        return;
+                    }
+                    
                     let contentHTML = '';
                     
                     const lastMsg = messages[msgKeys[msgKeys.length - 1]];
@@ -5105,13 +5112,19 @@ function renderList(type, data) {
             titleHtml = isReplyList ? `關於《${escapeHtml(t.bookTitle)}》的回音` : `筆友寄來《${escapeHtml(t.bookTitle)}》的心得`;
         }
 
-        el.onclick = () => { closeRoomModal(null, isReplyList ? 'modal-replies' : 'modal-inbox'); openChatModal(t.letterId); }; 
+     el.onclick = () => { 
+    showToast("✉️ 正在為您拆開信箋..."); 
+    openChatModal(t.letterId); 
+};
        // 尋找 renderList 函數，並替換裡面生成 HTML 的段落：
  let iconSvg = isReplyList
             ? `<svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="1.5" fill="none" style="color:var(--color-replies); margin-right:15px; flex-shrink:0;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>`
             : `<svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="1.5" fill="none" style="color:#a48c76; margin-right:15px; flex-shrink:0;"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>`;
  
-        el.onclick = () => { closeRoomModal(null, isReplyList ? 'modal-replies' : 'modal-inbox'); openChatModal(t.letterId); };
+     el.onclick = () => { 
+    showToast("✉️ 正在為您拆開信箋..."); 
+    openChatModal(t.letterId); 
+};
         
         // 判斷是否為「寄來的信箋」(modal-inbox)，如果是，加上隨機旋轉的復古郵戳
         let postmarkHtml = '';
