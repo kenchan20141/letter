@@ -980,7 +980,7 @@
                             const record = recType === 'reading' ? findLetterSafe(uid, dateStr, idx, dataArray) : findRandomSafe(uid, dateStr, dataArray);
                             
                             let actualDeadlineDate = new Date(dateStr);
-                            if (recType === 'reading') actualDeadlineDate.setDate(actualDeadlineDate.getDate() + 2);
+                            if (recType === 'reading') actualDeadlineDate.setDate(actualDeadlineDate.getDate() + 1);
                             
                             const deadlineTime = new Date(actualDeadlineDate);
                             deadlineTime.setHours(0,0,0,0);
@@ -1043,7 +1043,7 @@
                     // --- 依任務查看邏輯 ---
                     tasks.forEach((dateStr, idx) => {
                         let actualDeadlineDate = new Date(dateStr);
-                        if (recType === 'reading') actualDeadlineDate.setDate(actualDeadlineDate.getDate() + 2);
+                        if (recType === 'reading') actualDeadlineDate.setDate(actualDeadlineDate.getDate() + 1);
                         const displayDeadline = `${actualDeadlineDate.getFullYear()}-${String(actualDeadlineDate.getMonth() + 1).padStart(2, '0')}-${String(actualDeadlineDate.getDate()).padStart(2, '0')}`;
          
                         let html = `<div class="list-item"><div class="list-header" onclick="toggleAccordion('task-${idx}')"><div class="list-title">${recType==='reading'?'📋':'📸'} 第 ${idx + 1} 回 <span class="list-subtitle">期限: ${displayDeadline}</span></div><span style="font-size:0.8rem; color:var(--text-muted);">展開查看學生 ▾</span></div><div class="list-body" id="acc-body-task-${idx}"><div class="grid-container">`;
@@ -1067,7 +1067,7 @@
             
             let actualDeadlineDate = new Date(dateStr);
             if (recType === 'reading') {
-                actualDeadlineDate.setDate(actualDeadlineDate.getDate() + 2); 
+                actualDeadlineDate.setDate(actualDeadlineDate.getDate() + 1); 
             }
             
             const displayDeadline = `${actualDeadlineDate.getFullYear()}-${String(actualDeadlineDate.getMonth() + 1).padStart(2, '0')}-${String(actualDeadlineDate.getDate()).padStart(2, '0')}`;
