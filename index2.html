@@ -95,7 +95,7 @@
         .s-miss { background: #fee2e2; color: var(--red); }
         .s-free { background: #e0f2fe; color: #0284c7; }
 
-        /* --- Heatmap Table Styles --- */
+        /* --- Heatmap Table Styles (NEW) --- */
         .heatmap-box {
             width: 20px;
             height: 20px;
@@ -242,22 +242,19 @@
 
             <!-- 常規任務表單 -->
             <div id="assign-reading-form">
-                <div style="background-color: #e0f2fe; color: #0284c7; padding: 12px 15px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem;">
-                    <b>📌 系統設定：</b>常規閱讀任務的「截止日期」將自動設定為「開放日」的 <b>2天後</b>。
-                </div>
                 <div class="form-row">
                     <div class="panel" style="flex: 2; margin-bottom: 0;">
                         <div class="panel-title">按時段週期派發</div>
                         <div class="form-row">
-                            <div class="form-group"><label>開始日期 (首個開放日)</label><input type="date" id="periodic-start"></div>
-                            <div class="form-group"><label>結束日期 (最後開放日)</label><input type="date" id="periodic-end"></div>
+                            <div class="form-group"><label>開始日期</label><input type="date" id="periodic-start"></div>
+                            <div class="form-group"><label>結束日期</label><input type="date" id="periodic-end"></div>
                             <div class="form-group"><label>間隔天數</label><input type="number" id="periodic-interval" min="1" placeholder="例：7"></div>
                         </div>
                         <button class="btn" onclick="assignPeriodicTasks()">批次派發</button>
                     </div>
                     <div class="panel" style="flex: 1; margin-bottom: 0;">
                         <div class="panel-title">單次指定派發</div>
-                        <div class="form-group" style="margin-bottom: 20px;"><label>指定日期 (開放日)</label><input type="date" id="single-date"></div>
+                        <div class="form-group" style="margin-bottom: 20px;"><label>指定日期</label><input type="date" id="single-date"></div>
                         <button class="btn btn-outline" style="width: 100%; justify-content: center;" onclick="assignSingleTask('reading')">加派閱讀任務</button>
                     </div>
                 </div>
@@ -473,7 +470,7 @@
         function signOut() { auth.signOut().then(() => window.location.reload()); }
 
         // ==========================================
-        // 資料處理輔助函數
+        // 資料處理輔助函數 (解決 Firebase 陣列轉換為物件的防呆機制)
         // ==========================================
         function getArrayFromFirebase(data) {
             if (!data) return [];
@@ -482,7 +479,7 @@
         }
 
         // ==========================================
-        // 初始化監聽器
+        // 初始化監聽器 (優化 Firebase 讀取量)
         // ==========================================
         function initDataListeners() {
             db.ref('classes').on('value', snap => {
@@ -498,6 +495,7 @@
                 dbSpecialUsers = snap.val() || {};
                 if(document.getElementById('page-settings').classList.contains('active')) renderSpecialUsers();
             });
+            // ⚠️ 移除了 letters 與 random_task_submissions 的全域 .on 監聽，改由 renderRecords 觸發單次讀取
         }
 
         function switchPage(pageId) {
@@ -506,12 +504,12 @@
             
             if(pageId === 'page-classes') renderStudentsTable();
             if(pageId === 'page-tasks') renderTasksList();
-            if(pageId === 'page-records') renderRecords(); 
+            if(pageId === 'page-records') renderRecords(); // 進入時觸發讀取
             if(pageId === 'page-settings') renderSpecialUsers();
         }
 
         // ==========================================
-        // 系統設定 - 特許名單管理
+        // 系統設定 - 特許名單管理 (升級版)
         // ==========================================
         function addSpecialUser() {
             const emailInput = document.getElementById('new-special-email');
@@ -522,10 +520,15 @@
             if (!email) return alert("請輸入 Email");
             
             const safeKey = email.replace(/\./g, ',');
-            const data = { role: roleSelect.value, canType: canTypeCheck.checked };
+            const data = {
+                role: roleSelect.value,
+                canType: canTypeCheck.checked
+            };
 
             db.ref(`special_users/${safeKey}`).set(data).then(() => {
-                emailInput.value = ''; roleSelect.value = 'student'; canTypeCheck.checked = false;
+                emailInput.value = '';
+                roleSelect.value = 'student';
+                canTypeCheck.checked = false;
                 alert("已成功更新並放行該帳號！");
             }).catch(e => alert("新增失敗：" + e.message));
         }
@@ -549,6 +552,7 @@
                 let role = 'student';
                 let canType = false;
                 
+                // 相容舊版直接存 true 的格式
                 if (typeof data === 'object') {
                     role = data.role || 'student';
                     canType = data.canType || false;
@@ -573,7 +577,7 @@
         }
 
         // ==========================================
-        // 註銷帳號功能
+        // 註銷帳號功能 (安全優化版)
         // ==========================================
         function deleteUserAccount(uid, userName) {
             const confirmMsg = `⚠️ 嚴重警告！\n您即滿註銷學生「${userName}」的帳號。\n\n此操作將會：\n1. 徹底刪除該學生的所有個人資料、積分與道具。\n2. 清空該學生的私人視角信箱與個人相片。\n\n【保留機制】：\n為了不影響其他已配對的學生，該學生寄出或收到的「常規信件內容」將會被保留在對方的信箱中，但署名會自動變為「已註銷的帳號」。\n\n您確定要繼續嗎？`;
@@ -589,8 +593,11 @@
             let updates = {};
             updates[`users/${uid}`] = null;
             updates[`user_threads/${uid}`] = null;
+
+            // 註銷時同步刪除輕量級的 user_meta 檔案
             updates[`user_meta/${uid}`] = null;
 
+            // 利用索引精準找出該學生的任務與信件
             Promise.all([
                 db.ref('random_task_submissions').orderByChild('senderUid').equalTo(uid).once('value'),
                 db.ref('letters').orderByChild('senderUid').equalTo(uid).once('value')
@@ -663,7 +670,7 @@
         function changeStudentClass(uid, newCid) { 
             let updates = {};
             updates[`users/${uid}/classId`] = newCid;
-            updates[`user_meta/${uid}/classId`] = newCid; 
+            updates[`user_meta/${uid}/classId`] = newCid; // 同步更新輕量級配對檔案
             db.ref().update(updates).then(() => alert("已更新學生班級")); 
         }
 
@@ -734,17 +741,8 @@
             if(tasks.length === 0) return grid.innerHTML = '<p style="color: var(--text-muted); grid-column: 1/-1;">此班級尚未派發此類任務。</p>';
             
             tasks.forEach((d, i) => {
-                let dateLabel = '';
-                if (currentAssignType === 'reading') {
-                    let deadline = new Date(d);
-                    deadline.setDate(deadline.getDate() + 2);
-                    const deadlineStr = `${deadline.getFullYear()}-${String(deadline.getMonth() + 1).padStart(2, '0')}-${String(deadline.getDate()).padStart(2, '0')}`;
-                    dateLabel = `<span style="font-size:0.9rem; color:var(--text-muted)">開放日: ${d}</span><br><span style="font-size:0.9rem; color:var(--text-muted)">截止日: ${deadlineStr}</span>`;
-                } else {
-                    dateLabel = `<span style="font-size:0.9rem; color:var(--text-muted)">截止日: ${d}</span>`;
-                }
-                
-                grid.innerHTML += `<div class="task-card" style="text-align:left;"><div class="task-index">${currentAssignType==='reading'?'📖 閱讀':'📸 隨機'} 第 ${i + 1} 回</div><div class="task-date" style="font-size: 1.05rem; line-height: 1.5; margin-bottom:15px;">${dateLabel}</div><button class="btn btn-danger" style="position:absolute; top:15px; right:15px; padding: 6px 12px; font-size:0.85rem;" onclick="deleteTask('${cid}', ${i}, '${arrayName}')">刪除</button></div>`;
+                const dateLabel = currentAssignType === 'reading' ? `${d} (開放日)` : `${d} (截止日)`;
+                grid.innerHTML += `<div class="task-card" style="text-align:left;"><div class="task-index">${currentAssignType==='reading'?'📖 閱讀':'📸 隨機'} 第 ${i + 1} 回</div><div class="task-date" style="font-size: 1.1rem;">${dateLabel}</div><button class="btn btn-danger" style="position:absolute; top:15px; right:15px; padding: 6px 12px; font-size:0.85rem;" onclick="deleteTask('${cid}', ${i}, '${arrayName}')">刪除</button></div>`;
             });
         }
 
@@ -823,7 +821,7 @@
         }
 
         // ==========================================
-        // 作業批閱邏輯
+        // 作業批閱邏輯 (精準讀取量優化版 + 總覽圖表)
         // ==========================================
         function switchRecordTab(tab) {
             currentRecordTab = tab;
@@ -856,19 +854,24 @@
             return randomArray.find(l => l.senderUid === uid && l.taskDate === dateStr);
         }
 
+        // 🌟 異步獲取資料並渲染，保護 Firebase 免費額度
         async function renderRecords() {
             const cid = document.getElementById('record-class-select').value;
             const container = document.getElementById('records-accordion-container');
             if(!cid || !dbClasses[cid]) { container.innerHTML=''; return; }
      
             const recType = getRecordType();
+            
+            // 顯示讀取中動畫
             container.innerHTML = '<div style="padding: 40px; text-align:center; color: var(--text-muted); font-size:1.1rem;">資料讀取中，請稍候...</div>';
 
             try {
                 const studentsInClass = Object.keys(dbUsers).filter(uid => (dbUsers[uid].classId || 'default') === cid);
                 
+                // 單次精準獲取資料，不進行持久背景監聽全庫
                 if (recType === 'reading' || recType === 'free') {
                     dbLetters = {};
+                    // 利用索引只抓取該班學生的信件
                     const promises = studentsInClass.map(uid => db.ref('letters').orderByChild('senderUid').equalTo(uid).once('value'));
                     const snaps = await Promise.all(promises);
                     snaps.forEach(snap => {
@@ -876,13 +879,14 @@
                         if (data) Object.assign(dbLetters, data);
                     });
                 } else if (recType === 'random') {
+                    // 利用索引只抓取該班級的探索任務
                     const rSnap = await db.ref('random_task_submissions').orderByChild('classId').equalTo(cid).once('value');
                     dbRandomSubs = rSnap.val() || {};
                 }
 
                 container.innerHTML = '';
                 
-                // 自由撰寫邏輯
+                // 自由撰寫邏輯 (隱藏任務與總覽分頁)
                 if (recType === 'free') {
                     document.getElementById('tab-task').style.display = 'none';
                     document.getElementById('tab-overview').style.display = 'none';
@@ -923,7 +927,7 @@
                     return;
                 }
          
-                // 常規與隨機任務邏輯
+                // 常規與隨機任務邏輯 (顯示所有分頁)
                 document.getElementById('tab-task').style.display = 'inline-block';
                 document.getElementById('tab-overview').style.display = 'inline-block';
 
@@ -932,6 +936,7 @@
                 const dataArray = recType === 'reading' ? Object.values(dbLetters) : Object.values(dbRandomSubs);
          
                 if (currentRecordTab === 'overview') {
+                    // --- 總覽圖表渲染邏輯 ---
                     if (tasks.length === 0) {
                         container.innerHTML = `<p style="color:var(--text-muted);">此班級尚未派發任務。</p>`;
                         return;
@@ -1021,6 +1026,7 @@
                     container.innerHTML = html;
 
                 } else if (currentRecordTab === 'student') {
+                    // --- 依學生查看邏輯 ---
                     studentsInClass.forEach(uid => {
                         const u = dbUsers[uid];
                         let html = `<div class="list-item"><div class="list-header" onclick="toggleAccordion('stu-${uid}')"><div class="list-title">🧑‍🎓 ${escapeHtml(u.name)} <span class="list-subtitle">${escapeHtml(u.email)}</span></div><span style="font-size:0.8rem; color:var(--text-muted);">展開查看任務 ▾</span></div><div class="list-body" id="acc-body-stu-${uid}"><div class="grid-container">`;
@@ -1034,14 +1040,13 @@
                     if(studentsInClass.length === 0) container.innerHTML = `<p style="color:var(--text-muted);">此班級目前沒有學生。</p>`;
 
                 } else {
+                    // --- 依任務查看邏輯 ---
                     tasks.forEach((dateStr, idx) => {
                         let actualDeadlineDate = new Date(dateStr);
                         if (recType === 'reading') actualDeadlineDate.setDate(actualDeadlineDate.getDate() + 2);
                         const displayDeadline = `${actualDeadlineDate.getFullYear()}-${String(actualDeadlineDate.getMonth() + 1).padStart(2, '0')}-${String(actualDeadlineDate.getDate()).padStart(2, '0')}`;
-                        
-                        let displaySubtitle = recType === 'reading' ? `開放: ${dateStr} | 期限: ${displayDeadline}` : `期限: ${displayDeadline}`;
          
-                        let html = `<div class="list-item"><div class="list-header" onclick="toggleAccordion('task-${idx}')"><div class="list-title">${recType==='reading'?'📋':'📸'} 第 ${idx + 1} 回 <span class="list-subtitle">${displaySubtitle}</span></div><span style="font-size:0.8rem; color:var(--text-muted);">展開查看學生 ▾</span></div><div class="list-body" id="acc-body-task-${idx}"><div class="grid-container">`;
+                        let html = `<div class="list-item"><div class="list-header" onclick="toggleAccordion('task-${idx}')"><div class="list-title">${recType==='reading'?'📋':'📸'} 第 ${idx + 1} 回 <span class="list-subtitle">期限: ${displayDeadline}</span></div><span style="font-size:0.8rem; color:var(--text-muted);">展開查看學生 ▾</span></div><div class="list-body" id="acc-body-task-${idx}"><div class="grid-container">`;
                         studentsInClass.forEach(uid => {
                             const u = dbUsers[uid];
                             const record = recType === 'reading' ? findLetterSafe(uid, dateStr, idx, dataArray) : findRandomSafe(uid, dateStr, dataArray);
@@ -1082,19 +1087,11 @@
                     btnHtml = `<button class="btn btn-outline" style="width:100%; padding: 8px; margin-top:15px; font-size:0.9rem; border-color:#8b7355; color:#8b7355;" onclick="openRandomModal('${record.id}')">檢視相片</button>`;
                 }
             }
-            
-            let dateLabel = '';
-            if (recType === 'reading') {
-                dateLabel = `開放: ${dateStr}<br>期限: ${displayDeadline}`;
-            } else {
-                dateLabel = `期限: ${displayDeadline}`;
-            }
-
-            return `<div class="task-card"><div style="font-size:1.05rem; font-weight:600; margin-bottom:10px;">${title}</div><span class="status-badge ${statusClass}">${statusText}</span><div style="font-size:0.85rem; color:var(--text-muted); margin-top:12px; line-height: 1.5;">${dateLabel}</div>${btnHtml}</div>`;
+            return `<div class="task-card"><div style="font-size:1.05rem; font-weight:600; margin-bottom:10px;">${title}</div><span class="status-badge ${statusClass}">${statusText}</span><div style="font-size:0.85rem; color:var(--text-muted); margin-top:12px;">期限: ${displayDeadline}</div>${btnHtml}</div>`;
         }
 
         // ==========================================
-        // 閱讀器 Modals
+        // 閱讀器 Modals (加入了語錄渲染)
         // ==========================================
         function escapeHtml(str) { return str?str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"):str; }
         
@@ -1111,6 +1108,7 @@
                     let fText = escapeHtml(m.text).replace(/【目前進度】/g, '<span class="letter-section-divider">目前閱讀頁數</span>').replace(/【思考問題】/g, '<span class="letter-section-divider">思考問題</span>').replace(/【閱讀心得】/g, '<span class="letter-section-divider">閱讀感悟</span>');
                     let img = m.imageUrl ? `<a href="${m.imageUrl}" target="_blank" class="letter-img-wrap"><img src="${m.imageUrl}" class="letter-img" loading="lazy"></a>` : '';
                     
+                    // 🌟 渲染可能附帶的文學語錄卡片
                     let attachedQuoteHtml = '';
                     if (m.attachedQuoteId && LIT_QUOTES[m.attachedQuoteId]) {
                         const q = LIT_QUOTES[m.attachedQuoteId];
