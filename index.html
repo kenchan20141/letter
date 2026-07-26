@@ -4561,6 +4561,7 @@ function handleFileSelect(event, type = 'reading') {
 
 
 // 加入開啟自由撰寫的功能
+// 加入開啟自由撰寫的功能
 window.openFreeReadingEditor = function() {
     if (hasUnrepliedLetters) return alert("您有尚未回覆的信件，請先回覆才能自由撰寫。");
     
@@ -4576,11 +4577,13 @@ window.openFreeReadingEditor = function() {
     // 修改標題為自由撰寫
     document.getElementById('task-title').innerText = "自由撰寫心得";
     
-    // 清空輸入框
-    document.getElementById('book-title').value = ''; 
-    document.getElementById('book-page').value = ''; 
-    document.getElementById('log-question').value = ''; 
-    document.getElementById('log-content').value = ''; 
+    // 👇 修改：不再強制清空輸入框！改為檢查 SessionStorage，若沒有草稿才清空
+    if (!sessionStorage.getItem('draft_r_title')) document.getElementById('book-title').value = ''; 
+    if (!sessionStorage.getItem('draft_r_page')) document.getElementById('book-page').value = ''; 
+    if (!sessionStorage.getItem('draft_r_q')) document.getElementById('log-question').value = ''; 
+    if (!sessionStorage.getItem('draft_r_c')) document.getElementById('log-content').value = ''; 
+    
+    // (圖片因為安全性機制無法暫存，維持重置設定)
     document.getElementById('book-image').value = ''; 
     selectedFileBase64 = null; 
     document.getElementById('file-name-display').innerText = "尚未選擇圖片"; 
