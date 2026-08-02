@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="zh-HK">
 <head>
@@ -703,12 +702,19 @@
             document.getElementById('modal-mailbox').style.display = 'flex';
             
             try {
-                // 僅從 letters 節點中讀取信件，因此隨機探索任務 (存在於 random_task_submissions) 不會被計算在內
+                // 僅從 letters 節點中讀取信件
                 const letSnap = await db.ref('letters').orderByChild('recipientUid').equalTo(uid).once('value');
                 const letters = letSnap.val() || {};
                 
-                // 篩選出別人寄來的信件，並額外防呆排除任何誤植的 random 任務
-                const letterList = Object.values(letters).filter(l => l.senderUid !== uid && l.taskIndex !== 'random');
+                // 篩選出別人寄來的信件，並嚴格排除「生活探索」(隨機探索) 與「自由分享」
+                const letterList = Object.values(letters).filter(l => {
+                    if (l.senderUid === uid) return false;
+                    if (l.taskIndex === 'random' || l.taskIndex === 'free' || l.taskIndex === 'life') return false;
+                    if (l.taskType === 'random' || l.type === 'random' || l.isRandom === true) return false;
+                    if (l.drawnTask) return false;
+                    if (typeof l.bookTitle === 'string' && (l.bookTitle.includes('生活探索') || l.bookTitle.includes('隨機探索'))) return false;
+                    return true;
+                });
                 
                 let total = letterList.length;
                 let pending = 0;
