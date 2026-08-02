@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-HK">
 <head>
@@ -95,7 +96,7 @@
         .s-miss { background: #fee2e2; color: var(--red); }
         .s-free { background: #e0f2fe; color: #0284c7; }
 
-        /* --- Heatmap Table Styles (NEW) --- */
+        /* --- Heatmap Table Styles --- */
         .heatmap-box {
             width: 20px;
             height: 20px;
@@ -220,7 +221,7 @@
             <div class="panel">
                 <div class="panel-title">學生名單與分班</div>
                 <table class="data-table" id="students-table">
-                    <thead><tr><th>學生姓名</th><th>Email</th><th>目前班級</th><th style="width: 80px;">積分</th><th>操作</th></tr></thead>
+                    <thead><tr><th>學生姓名</th><th>Email</th><th>目前班級</th><th style="width: 80px;">積分</th><th>信箱狀態</th><th>操作</th></tr></thead>
                     <tbody></tbody>
                 </table>
             </div>
@@ -347,6 +348,18 @@
         </section>
 
     </main>
+
+    <!-- 信箱管理 Modal -->
+    <div id="modal-mailbox" class="overlay" style="display:none; z-index: 6000;">
+        <div class="panel" style="width: 90%; max-width: 600px; max-height: 80vh; display: flex; flex-direction: column;">
+            <div class="panel-title" style="margin-bottom: 10px;">
+                <span>信箱管理 <span id="mailbox-user-name" style="font-size:0.9rem; color:var(--text-muted); margin-left:10px;"></span></span>
+                <button class="btn btn-outline" style="padding:4px 10px;" onclick="closeMailboxModal()">×</button>
+            </div>
+            <div id="mailbox-stats" style="font-size: 0.95rem; color: var(--text-main); margin-bottom: 20px; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid var(--border);"></div>
+            <div id="mailbox-grid" style="flex: 1; overflow-y: auto; padding-right: 10px; display: flex; flex-direction: column; gap: 12px;"></div>
+        </div>
+    </div>
 
     <!-- 道具管理 Modal -->
     <div id="modal-inventory" class="overlay" style="display:none; z-index: 6000;">
@@ -495,7 +508,6 @@
                 dbSpecialUsers = snap.val() || {};
                 if(document.getElementById('page-settings').classList.contains('active')) renderSpecialUsers();
             });
-            // ⚠️ 移除了 letters 與 random_task_submissions 的全域 .on 監聽，改由 renderRecords 觸發單次讀取
         }
 
         function switchPage(pageId) {
@@ -642,9 +654,11 @@
             if(cTask && dbClasses[cTask]) ts.value = cTask; if(cRec && dbClasses[cRec]) rs.value = cRec;
         }
 
-        function renderStudentsTable() {
-            const tbody = document.querySelector('#students-table tbody'); tbody.innerHTML = '';
+        async function renderStudentsTable() {
+            const tbody = document.querySelector('#students-table tbody'); 
             let ops = ''; for(let cid in dbClasses) ops += `<option value="${cid}">${escapeHtml(dbClasses[cid].name)}</option>`;
+            
+            tbody.innerHTML = '';
             for(let uid in dbUsers) {
                 const u = dbUsers[uid]; const cId = u.classId || 'default';
                 tbody.innerHTML += `
@@ -659,19 +673,180 @@
                         <td style="color: var(--yellow); font-weight:600;">
                             ${u.points || 0}
                         </td>
+                        <td id="stu-mail-${uid}" style="font-size: 0.9rem; color: var(--text-muted);">計算中...</td>
                         <td style="display: flex; gap: 8px; align-items: center;">
+                            <button class="btn btn-outline" style="padding: 6px 12px; font-size: 0.85rem;" onclick="openMailboxModal('${uid}')">信箱</button>
                             <button class="btn btn-outline" style="padding: 6px 12px; font-size: 0.85rem;" onclick="openInventoryModal('${uid}')">道具</button>
                             <button class="btn btn-danger" style="padding: 6px 12px; font-size: 0.85rem;" onclick="deleteUserAccount('${uid}', '${escapeHtml(u.name)}')">註銷</button>
                         </td>
                     </tr>
                 `;
             }
+
+            // 非同步取得信箱統計資料
+            try {
+                const [letSnap, convSnap] = await Promise.all([
+                    db.ref('letters').once('value'),
+                    db.ref('conversations').once('value')
+                ]);
+                
+                const letters = letSnap.val() || {};
+                const conversations = convSnap.val() || {};
+                const userStats = {};
+                
+                Object.values(letters).forEach(l => {
+                    // 只統計別人寄來的（排除自己發出的信）
+                    if (l.recipientUid && l.senderUid !== l.recipientUid) {
+                        if (!userStats[l.recipientUid]) userStats[l.recipientUid] = { total: 0, pending: 0 };
+                        userStats[l.recipientUid].total++;
+                        
+                        const conv = conversations[l.id] || {};
+                        // 若只有 1 條訊息（即原信件），表示尚未回覆
+                        if (Object.keys(conv).length <= 1) {
+                            userStats[l.recipientUid].pending++;
+                        }
+                    }
+                });
+                
+                for(let uid in dbUsers) {
+                    const el = document.getElementById(`stu-mail-${uid}`);
+                    if (el) {
+                        const stat = userStats[uid] || { total: 0, pending: 0 };
+                        el.innerHTML = `收: <b>${stat.total}</b> <span style="color:var(--border);">|</span> <span style="${stat.pending > 0 ? 'color:var(--red); font-weight:600;' : 'color:var(--text-muted);'}">待回: ${stat.pending}</span>`;
+                    }
+                }
+            } catch(e) {
+                console.error("信箱統計載入失敗", e);
+                for(let uid in dbUsers) {
+                    const el = document.getElementById(`stu-mail-${uid}`);
+                    if (el) el.innerHTML = `載入失敗`;
+                }
+            }
         }
+
         function changeStudentClass(uid, newCid) { 
             let updates = {};
             updates[`users/${uid}/classId`] = newCid;
             updates[`user_meta/${uid}/classId`] = newCid; // 同步更新輕量級配對檔案
             db.ref().update(updates).then(() => alert("已更新學生班級")); 
+        }
+
+        // ==========================================
+        // 信箱與轉發管理系統
+        // ==========================================
+        async function openMailboxModal(uid) {
+            const u = dbUsers[uid];
+            if (!u) return;
+            
+            document.getElementById('mailbox-user-name').innerText = `(${escapeHtml(u.name)})`;
+            const grid = document.getElementById('mailbox-grid');
+            grid.innerHTML = '<div style="text-align:center; padding: 40px; color:var(--text-muted);">資料讀取中...</div>';
+            document.getElementById('modal-mailbox').style.display = 'flex';
+            
+            try {
+                // 只讀取該學生收到的信件
+                const letSnap = await db.ref('letters').orderByChild('recipientUid').equalTo(uid).once('value');
+                const letters = letSnap.val() || {};
+                const letterList = Object.values(letters).filter(l => l.senderUid !== uid);
+                
+                let total = letterList.length;
+                let pending = 0;
+                let items = [];
+                
+                if (total > 0) {
+                    // 只針對這些信件讀取對話狀態，避免大範圍下載
+                    const convPromises = letterList.map(l => db.ref(`conversations/${l.id}`).once('value'));
+                    const convSnaps = await Promise.all(convPromises);
+                    
+                    convSnaps.forEach((cSnap, idx) => {
+                        const msgs = cSnap.val() || {};
+                        const isPending = Object.keys(msgs).length <= 1;
+                        if (isPending) pending++;
+                        items.push({ letter: letterList[idx], isPending: isPending });
+                    });
+                    
+                    // 排序：待回覆優先，再依時間新舊
+                    items.sort((a, b) => {
+                        if (a.isPending === b.isPending) return b.letter.timestamp - a.letter.timestamp;
+                        return a.isPending ? -1 : 1;
+                    });
+                }
+                
+                let studentOptions = '<option value="">-- 選擇轉發對象 --</option>';
+                Object.keys(dbUsers).forEach(suid => {
+                    if (suid !== uid) {
+                        studentOptions += `<option value="${suid}">${escapeHtml(dbUsers[suid].name)} (${escapeHtml(dbUsers[suid].classId ? (dbClasses[dbUsers[suid].classId]?.name || '未分班') : '未分班')})</option>`;
+                    }
+                });
+                
+                let html = '';
+                if (total === 0) {
+                    html = '<div style="text-align:center; padding: 40px; color:var(--text-muted);">該學生尚未收到任何人寄來的心得。</div>';
+                } else {
+                    items.forEach(item => {
+                        const l = item.letter;
+                        const senderName = dbUsers[l.senderUid] ? dbUsers[l.senderUid].name : '已註銷的帳號';
+                        const d = new Date(l.timestamp);
+                        const dateStr = `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+                        
+                        html += `
+                            <div style="border: 1px solid var(--border); border-radius: 8px; padding: 18px; background: ${item.isPending ? '#fff' : '#f8fafc'}; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+                                    <div>
+                                        <div style="font-weight: 600; font-size: 1.05rem; margin-bottom: 5px;">來自：${escapeHtml(senderName)}</div>
+                                        <div style="font-size: 0.9rem; color: var(--text-muted);">《${escapeHtml(l.bookTitle)}》 | 寄出日：${dateStr}</div>
+                                    </div>
+                                    <div>
+                                        ${item.isPending ? '<span class="status-badge s-late">待回覆</span>' : '<span class="status-badge s-ok" style="background:#e2e8f0; color:#64748b;">已回覆</span>'}
+                                    </div>
+                                </div>
+                                ${item.isPending ? `
+                                    <div style="display: flex; gap: 10px; margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 15px;">
+                                        <select id="transfer-select-${l.id}" style="flex: 1; padding: 8px 12px; font-size: 0.95rem; border-radius: 6px; border: 1px solid #cbd5e1; outline: none;">
+                                            ${studentOptions}
+                                        </select>
+                                        <button class="btn" style="padding: 8px 16px;" onclick="transferLetter('${l.id}', '${uid}')">轉發信件</button>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    });
+                }
+                
+                document.getElementById('mailbox-stats').innerHTML = `共收到：<b>${total}</b> 封 ｜ 待回覆：<b style="color:var(--red);">${pending}</b> 封`;
+                grid.innerHTML = html;
+                
+            } catch (e) {
+                grid.innerHTML = `<div style="text-align:center; padding: 40px; color:var(--red);">讀取失敗：${e.message}</div>`;
+            }
+        }
+
+        function closeMailboxModal() {
+            document.getElementById('modal-mailbox').style.display = 'none';
+        }
+
+        async function transferLetter(letterId, oldUid) {
+            const selectEl = document.getElementById(`transfer-select-${letterId}`);
+            const newUid = selectEl.value;
+            
+            if (!newUid) return alert("請選擇轉發對象");
+            const newUName = dbUsers[newUid]?.name || '未知學生';
+            
+            if (!confirm(`確定要將此信件轉發給「${newUName}」嗎？\n轉發後，原學生將從信箱中遺失此信件，且新對象會將其視為新收到的未讀信件。`)) return;
+            
+            let updates = {};
+            updates[`letters/${letterId}/recipientUid`] = newUid;
+            updates[`user_threads/${oldUid}/${letterId}`] = null;
+            updates[`user_threads/${newUid}/${letterId}`] = Date.now();
+            
+            try {
+                await db.ref().update(updates);
+                alert("信件已成功轉發！");
+                openMailboxModal(oldUid); // 刷新當前彈出視窗
+                renderStudentsTable(); // 刷新背景表格數字
+            } catch (e) {
+                alert("轉發失敗：" + e.message);
+            }
         }
 
         // ==========================================
