@@ -3444,20 +3444,7 @@ function initApp() {
         let realReadingCount = data.receivedCount || 0;
         let realRandomCount = data.receivedRandomCount || 0;
 
-        // 💡 【零負擔即時自癒系統】：
-        // 只有當「真實信件數」跟「上次同步的數字」不同時，才發送更新給 Firebase。
-        // 這確保了只要玩家一收到信，或是資料庫卡在 0 (因為初始值是 -1)，就會立刻瞬間修復！
-        if (realReadingCount !== lastSyncedReadingCount || realRandomCount !== lastSyncedRandomCount) {
-            db.ref(`user_meta/${currentUser.uid}`).update({
-                receivedCount: realReadingCount,
-                receivedRandomCount: realRandomCount,
-                email: currentUser.email,
-                classId: data.classId || 'default'
-            });
-            // 更新本地記憶，防止重複觸發寫入
-            lastSyncedReadingCount = realReadingCount;
-            lastSyncedRandomCount = realRandomCount;
-        }
+   
 
         userPoints = data.points || 0;
         userInventory = data.inventory || {};
@@ -5084,11 +5071,11 @@ function processRandomTask(data) {
             setTimeout(() => gsap.to(b, {y:0, opacity:0, duration:0.4}), 8000); 
         }
 
-     function loadMailbox() { 
+    function loadMailbox() { 
     db.ref(`user_threads/${currentUser.uid}`).on('value', snap => { 
         let rawData = Object.values(snap.val() || {});
         
-        // 🛡️ 終極防呆過濾：把沒有 ID 或沒有時間的壞資料直接剃除，不讓它們進入畫面！
+        // 🛡️ 終極防呆過濾：把沒有 ID 或沒有時間的壞資料直接剃除
         let validData = rawData.filter(t => t && typeof t === 'object' && t.letterId && t.lastUpdated);
 
         // 排序
@@ -5096,6 +5083,10 @@ function processRandomTask(data) {
 
         let repliesData = [], inboxReadingData = [], inboxRandomData = []; 
         hasUnrepliedLetters = false; let uRep = false, uIn = false; 
+        
+        // 👇 新增：準備精準計算玩家真正收到的信件數量
+        let trueReadingCount = 0;
+        let trueRandomCount = 0;
         
         all.forEach(t => { 
             if (t.isSender) { 
@@ -5106,21 +5097,33 @@ function processRandomTask(data) {
             } else { 
                 if (t.type === 'random') {
                     inboxRandomData.push(t);
+                    trueRandomCount++; // 👈 精準計算探索任務數量
                 } else {
                     inboxReadingData.push(t);
+                    trueReadingCount++; // 👈 精準計算閱讀任務數量
                     if(!t.hasReplied) hasUnrepliedLetters = true; 
                 }
                 if(t.hasUnread) uIn = true; 
             } 
         }); 
         
+        // 👇 終極防線：將真實計算出來的信件數量，強制同步到配對池中
+        // 這樣就算其他人寄信時更新失敗，只要玩家一打開信箱，數字就會自動校正！
+        db.ref(`user_meta/${currentUser.uid}`).update({
+            receivedCount: trueReadingCount,
+            receivedRandomCount: trueRandomCount
+        });
+        db.ref(`users/${currentUser.uid}`).update({
+            receivedCount: trueReadingCount,
+            receivedRandomCount: trueRandomCount
+        });
+
         renderList('replies', repliesData); 
         renderList('inbox-reading', inboxReadingData); 
         renderList('inbox-random', inboxRandomData); 
         updateDrawerIndicators(uRep, uIn); 
     }); 
 }
-
 function renderList(type, data) { 
     const listEl = document.getElementById(`${type}-list`); 
     if(!listEl) return;
