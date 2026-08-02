@@ -792,28 +792,48 @@
             document.getElementById('modal-mailbox').style.display = 'none';
         }
 
-        async function transferLetter(letterId, oldUid) {
-            const selectEl = document.getElementById(`transfer-select-${letterId}`);
-            const newUid = selectEl.value;
-            
-            if (!newUid) return alert("請選擇轉發對象");
-            const newUName = dbUsers[newUid]?.name || '未知學生';
-            
-            if (!confirm(`確定要將此信件轉發給「${newUName}」嗎？\n轉發後，原學生將從信箱中遺失此信件，且新對象會將其視為新收到的未讀信件。`)) return;
-            
-            let updates = {};
-            updates[`letters/${letterId}/recipientUid`] = newUid;
-            updates[`user_threads/${oldUid}/${letterId}`] = null;
-            updates[`user_threads/${newUid}/${letterId}`] = Date.now();
-            
-            try {
-                await db.ref().update(updates);
-                alert("信件已成功轉發！");
-                openMailboxModal(oldUid); // 刷新當前彈出視窗
-            } catch (e) {
-                alert("轉發失敗：" + e.message);
-            }
-        }
+      async function transferLetter(letterId, oldUid) {
+    const selectEl = document.getElementById(`transfer-select-${letterId}`);
+    const newUid = selectEl.value;
+    
+    if (!newUid) return alert("請選擇轉發對象");
+    const newUName = dbUsers[newUid]?.name || '未知學生';
+    
+    if (!confirm(`確定要將此信件轉發給「${newUName}」嗎？\n轉發後，原學生將從信箱中遺失此信件，且新對象會將其視為新收到的未讀信件。`)) return;
+    
+    try {
+        // 【修復關鍵 1】先取得該封信件的完整資料
+        const letterSnap = await db.ref(`letters/${letterId}`).once('value');
+        const letterData = letterSnap.val();
+        
+        if (!letterData) return alert("找不到原信件資料，無法轉發。");
+
+        let updates = {};
+        // 1. 更新真實信件節點的收件人 UID
+        updates[`letters/${letterId}/recipientUid`] = newUid;
+        
+        // 2. 刪除舊學生的信箱索引
+        updates[`user_threads/${oldUid}/${letterId}`] = null;
+        
+        // 3. 【修復關鍵 2】為新學生建立「完整的物件結構」，確保前端能讀取書名與打開信件
+        updates[`user_threads/${newUid}/${letterId}`] = {
+            id: letterId,
+            bookTitle: letterData.bookTitle || "未知書籍",
+            senderUid: letterData.senderUid,
+            recipientUid: newUid,
+            timestamp: Date.now(),  // 轉發的時間當作新收件時間
+            hasUnread: true,        // 標記為未讀，讓學生知道有新信
+            taskIndex: letterData.taskIndex || null,
+            taskDate: letterData.taskDate || null
+        };
+        
+        await db.ref().update(updates);
+        alert("信件已成功轉發！");
+        openMailboxModal(oldUid); // 刷新當前彈出視窗
+    } catch (e) {
+        alert("轉發失敗：" + e.message);
+    }
+}
 
         // ==========================================
         // 道具管理系統
