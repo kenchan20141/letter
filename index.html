@@ -4729,7 +4729,7 @@ window.openFreeReadingEditor = function() {
                         if (btnSend) {
                             btnSend.onclick = () => {
                                 const txt = replyInput ? replyInput.value.trim() : ''; 
-                                if (!txt || txt.length < 100) return alert("回覆最少需要 100 字。");
+                               if (!txt || txt.length < 100) return showToast(`✍️ 回覆最少需要 100 字，目前僅有 ${txt.length} 字。`);
                                 
                              const pId = window.selectedStationery.reply.paper;
                                 const iId = window.selectedStationery.reply.ink;
@@ -4964,36 +4964,40 @@ function processRandomTask(data) {
 
    
 
-        async function submitLog() {
-            const title = document.getElementById('book-title').value.trim(); const page = document.getElementById('book-page').value.trim();
-            const question = document.getElementById('log-question').value.trim(); const text = document.getElementById('log-content').value.trim();
-            if (!title || !page || !question || !text) return alert("請填寫完整資訊 (書名、頁數、思考問題與心得)。");
-            if (!selectedFileBase64) return alert("請務必上傳書籍畫面圖片。"); if (text.length < 150) return alert("心得最少需要 150 字。");
-            if (isSubmittingLog) return; isSubmittingLog = true; const btn = document.getElementById('btn-submit-task'); btn.innerText = "圖片上傳與封裝中..."; btn.disabled = true;
+      async function submitLog() {
+    const title = document.getElementById('book-title').value.trim(); const page = document.getElementById('book-page').value.trim();
+    const question = document.getElementById('log-question').value.trim(); const text = document.getElementById('log-content').value.trim();
+    
+    // 👇 將 alert 替換為 showToast，並加上字數提示
+    if (!title || !page || !question || !text) return showToast("⚠️ 請填寫完整資訊 (書名、頁數、思考問題與心得)。");
+    if (!selectedFileBase64) return showToast("📸 請務必上傳書籍畫面圖片。"); 
+    if (text.length < 150) return showToast(`✍️ 心得最少需要 150 字，目前僅有 ${text.length} 字。`);
+    
+    if (isSubmittingLog) return; isSubmittingLog = true; 
+    const btn = document.getElementById('btn-submit-task'); 
+    btn.innerText = "圖片上傳與封裝中..."; 
+    btn.disabled = true;
 
-            try {
+    try {
         const response = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ fileName: selectedFileName, mimeType: 'image/jpeg', base64: selectedFileBase64 }) });
         const responseText = await response.text(); 
         let result = JSON.parse(responseText); 
         
         if (!result.success) throw new Error(result.error || "上傳未成功");
-        
-        // 👇 【新增】：嚴格安全攔截！確保回傳的是真正的 URL 網址，絕不能是 Base64！
-        if (!result.url || result.url.startsWith('data:image')) {
-            throw new Error("圖片伺服器回傳格式錯誤，為保護系統已終止傳送。");
-        }
+        if (!result.url || result.url.startsWith('data:image')) throw new Error("圖片伺服器回傳格式錯誤，為保護系統已終止傳送。");
 
- const paperId = window.selectedStationery.write.paper;
+        const paperId = window.selectedStationery.write.paper;
         const inkId = window.selectedStationery.write.ink;
         const combinedText = `【目前進度】\n第 ${page} 頁\n\n【思考問題】\n${question}\n\n【閱讀心得】\n${text}`;
         playAnim('log', null, null, { title: title, text: combinedText, imageUrl: result.url, quoteId: currentAttachedQuoteId, paperId: paperId, inkId: inkId });
     } catch (error) { 
-        alert("圖片上傳發生異常：" + error.message); 
+        // 👇 將 alert 替換為 showToast
+        showToast("⚠️ 圖片上傳發生異常：" + error.message); 
         isSubmittingLog = false; 
         btn.innerText = "封裝寄出心得"; 
         btn.disabled = false; 
     }
-        }
+}
 
   function loadUserPlant() {
     db.ref(`users/${currentUser.uid}/plant`).on('value', snap => {
@@ -6711,36 +6715,32 @@ function openRandomEditor() {
 }
 
 async function submitRandomTask() {
-    if (!selectedFileBase64) return alert("請務必上傳任務證明相片。");
+    // 👇 替換為 showToast
+    if (!selectedFileBase64) return showToast("📸 請務必上傳任務證明相片。");
     
     const note = document.getElementById('random-note').value.trim();
-    // 📝 新增這行：檢查是否填寫了備註文字
-    if (!note) return alert("請務必填寫備註文字分享您的感觸。"); 
+    // 👇 替換為 showToast
+    if (!note) return showToast("✍️ 請務必填寫備註文字分享您的感觸。"); 
     
     const btn = document.getElementById('btn-submit-random');
     btn.innerText = "相片上傳與封裝中..."; btn.disabled = true;
 
-   try {
+    try {
         const response = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ fileName: selectedFileName, mimeType: 'image/jpeg', base64: selectedFileBase64 }) });
         const responseText = await response.text(); 
         let result = JSON.parse(responseText); 
         
         if (!result.success) throw new Error("上傳未成功");
+        if (!result.url || result.url.startsWith('data:image')) throw new Error("圖片伺服器回傳格式錯誤，為保護系統已終止傳送。");
         
-        // 👇 【新增】：嚴格安全攔截！確保回傳的是真正的 URL 網址
-        if (!result.url || result.url.startsWith('data:image')) {
-            throw new Error("圖片伺服器回傳格式錯誤，為保護系統已終止傳送。");
-        }
-        
-        // 觸發 3D 動畫，並將 type 設為 'random'
         playAnim('random', null, null, { text: note, imageUrl: result.url });
     } catch (error) { 
-        alert("圖片上傳發生異常：" + error.message); 
+        // 👇 替換為 showToast
+        showToast("⚠️ 圖片上傳發生異常：" + error.message); 
         btn.innerText = "封裝完成任務"; 
         btn.disabled = false; 
     }
-
-    }
+}
             
 
 /* =========================================
