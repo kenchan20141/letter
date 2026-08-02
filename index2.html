@@ -792,7 +792,7 @@
             document.getElementById('modal-mailbox').style.display = 'none';
         }
 
-      async function transferLetter(letterId, oldUid) {
+async function transferLetter(letterId, oldUid) {
     const selectEl = document.getElementById(`transfer-select-${letterId}`);
     const newUid = selectEl.value;
     
@@ -802,7 +802,7 @@
     if (!confirm(`確定要將此信件轉發給「${newUName}」嗎？\n轉發後，原學生將從信箱中遺失此信件，且新對象會將其視為新收到的未讀信件。`)) return;
     
     try {
-        // 【修復關鍵 1】先取得該封信件的完整資料
+        // 先取得該封信件的完整資料
         const letterSnap = await db.ref(`letters/${letterId}`).once('value');
         const letterData = letterSnap.val();
         
@@ -815,16 +815,16 @@
         // 2. 刪除舊學生的信箱索引
         updates[`user_threads/${oldUid}/${letterId}`] = null;
         
-        // 3. 【修復關鍵 2】為新學生建立「完整的物件結構」，確保前端能讀取書名與打開信件
+        // 3. 【終極修正】為新學生建立完全符合前端格式的資料結構
         updates[`user_threads/${newUid}/${letterId}`] = {
-            id: letterId,
+            letterId: letterId,                        // 必須是 letterId，學生點擊才打得開
+            type: letterData.type || 'reading',        // 必須帶入信件類型
             bookTitle: letterData.bookTitle || "未知書籍",
-            senderUid: letterData.senderUid,
-            recipientUid: newUid,
-            timestamp: Date.now(),  // 轉發的時間當作新收件時間
-            hasUnread: true,        // 標記為未讀，讓學生知道有新信
-            taskIndex: letterData.taskIndex || null,
-            taskDate: letterData.taskDate || null
+            isSender: false,                           // 轉發代表對方是收件人
+            hasUnread: true,                           // 標記為新信件
+            hasReplied: false,                         // 標記為尚未回覆
+            hasBeenRepliedTo: false,
+            lastUpdated: Date.now()                    // 必須是 lastUpdated，日期顯示才不會 Invalid
         };
         
         await db.ref().update(updates);
