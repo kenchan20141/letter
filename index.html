@@ -5080,36 +5080,36 @@ function processRandomTask(data) {
             setTimeout(() => gsap.to(b, {y:0, opacity:0, duration:0.4}), 8000); 
         }
 
-      function loadMailbox() { 
+     function loadMailbox() { 
     db.ref(`user_threads/${currentUser.uid}`).on('value', snap => { 
-        let all = Object.values(snap.val() || {}).sort((a, b) => b.lastUpdated - a.lastUpdated); 
+        let rawData = Object.values(snap.val() || {});
+        
+        // 🛡️ 終極防呆過濾：把沒有 ID 或沒有時間的壞資料直接剃除，不讓它們進入畫面！
+        let validData = rawData.filter(t => t && typeof t === 'object' && t.letterId && t.lastUpdated);
+
+        // 排序
+        let all = validData.sort((a, b) => b.lastUpdated - a.lastUpdated); 
+
         let repliesData = [], inboxReadingData = [], inboxRandomData = []; 
         hasUnrepliedLetters = false; let uRep = false, uIn = false; 
         
-       all.forEach(t => { 
+        all.forEach(t => { 
             if (t.isSender) { 
-                // 我寄出的閱讀心得，收到回覆後才會進入「對我的回覆」列表
                 if (t.type !== 'random' && t.hasBeenRepliedTo) { 
                     repliesData.push(t); 
-                    // 👇 將這一行刪除或註解，打破強制回信的無限迴圈！
-                    // if(!t.hasReplied) hasUnrepliedLetters = true; 
                     if(t.hasUnread) uRep = true; 
                 }
-                // (寄出的探索任務由於沒有回信，就不顯示在此列表，用家已在任務板看見完成狀態)
             } else { 
-                // 我收到的信件 (分為探索 / 閱讀)
                 if (t.type === 'random') {
                     inboxRandomData.push(t);
-                    // 探索任務不強制回覆，所以這裡不觸發 hasUnrepliedLetters
                 } else {
                     inboxReadingData.push(t);
-                    // 閱讀心得必須回覆，否則卡住新任務
                     if(!t.hasReplied) hasUnrepliedLetters = true; 
                 }
-                
                 if(t.hasUnread) uIn = true; 
             } 
         }); 
+        
         renderList('replies', repliesData); 
         renderList('inbox-reading', inboxReadingData); 
         renderList('inbox-random', inboxRandomData); 
