@@ -221,7 +221,7 @@
             <div class="panel">
                 <div class="panel-title">學生名單與分班</div>
                 <table class="data-table" id="students-table">
-                    <thead><tr><th>學生姓名</th><th>Email</th><th>目前班級</th><th style="width: 80px;">積分</th><th>信箱狀態</th><th>操作</th></tr></thead>
+                    <thead><tr><th>學生姓名</th><th>Email</th><th>目前班級</th><th style="width: 80px;">積分</th><th>操作</th></tr></thead>
                     <tbody></tbody>
                 </table>
             </div>
@@ -654,7 +654,7 @@
             if(cTask && dbClasses[cTask]) ts.value = cTask; if(cRec && dbClasses[cRec]) rs.value = cRec;
         }
 
-        async function renderStudentsTable() {
+        function renderStudentsTable() {
             const tbody = document.querySelector('#students-table tbody'); 
             let ops = ''; for(let cid in dbClasses) ops += `<option value="${cid}">${escapeHtml(dbClasses[cid].name)}</option>`;
             
@@ -673,7 +673,6 @@
                         <td style="color: var(--yellow); font-weight:600;">
                             ${u.points || 0}
                         </td>
-                        <td id="stu-mail-${uid}" style="font-size: 0.9rem; color: var(--text-muted);">計算中...</td>
                         <td style="display: flex; gap: 8px; align-items: center;">
                             <button class="btn btn-outline" style="padding: 6px 12px; font-size: 0.85rem;" onclick="openMailboxModal('${uid}')">信箱</button>
                             <button class="btn btn-outline" style="padding: 6px 12px; font-size: 0.85rem;" onclick="openInventoryModal('${uid}')">道具</button>
@@ -681,46 +680,6 @@
                         </td>
                     </tr>
                 `;
-            }
-
-            // 非同步取得信箱統計資料
-            try {
-                const [letSnap, convSnap] = await Promise.all([
-                    db.ref('letters').once('value'),
-                    db.ref('conversations').once('value')
-                ]);
-                
-                const letters = letSnap.val() || {};
-                const conversations = convSnap.val() || {};
-                const userStats = {};
-                
-                Object.values(letters).forEach(l => {
-                    // 只統計別人寄來的（排除自己發出的信）
-                    if (l.recipientUid && l.senderUid !== l.recipientUid) {
-                        if (!userStats[l.recipientUid]) userStats[l.recipientUid] = { total: 0, pending: 0 };
-                        userStats[l.recipientUid].total++;
-                        
-                        const conv = conversations[l.id] || {};
-                        // 若只有 1 條訊息（即原信件），表示尚未回覆
-                        if (Object.keys(conv).length <= 1) {
-                            userStats[l.recipientUid].pending++;
-                        }
-                    }
-                });
-                
-                for(let uid in dbUsers) {
-                    const el = document.getElementById(`stu-mail-${uid}`);
-                    if (el) {
-                        const stat = userStats[uid] || { total: 0, pending: 0 };
-                        el.innerHTML = `收: <b>${stat.total}</b> <span style="color:var(--border);">|</span> <span style="${stat.pending > 0 ? 'color:var(--red); font-weight:600;' : 'color:var(--text-muted);'}">待回: ${stat.pending}</span>`;
-                    }
-                }
-            } catch(e) {
-                console.error("信箱統計載入失敗", e);
-                for(let uid in dbUsers) {
-                    const el = document.getElementById(`stu-mail-${uid}`);
-                    if (el) el.innerHTML = `載入失敗`;
-                }
             }
         }
 
@@ -744,10 +703,12 @@
             document.getElementById('modal-mailbox').style.display = 'flex';
             
             try {
-                // 只讀取該學生收到的信件
+                // 僅從 letters 節點中讀取信件，因此隨機探索任務 (存在於 random_task_submissions) 不會被計算在內
                 const letSnap = await db.ref('letters').orderByChild('recipientUid').equalTo(uid).once('value');
                 const letters = letSnap.val() || {};
-                const letterList = Object.values(letters).filter(l => l.senderUid !== uid);
+                
+                // 篩選出別人寄來的信件，並額外防呆排除任何誤植的 random 任務
+                const letterList = Object.values(letters).filter(l => l.senderUid !== uid && l.taskIndex !== 'random');
                 
                 let total = letterList.length;
                 let pending = 0;
@@ -843,7 +804,6 @@
                 await db.ref().update(updates);
                 alert("信件已成功轉發！");
                 openMailboxModal(oldUid); // 刷新當前彈出視窗
-                renderStudentsTable(); // 刷新背景表格數字
             } catch (e) {
                 alert("轉發失敗：" + e.message);
             }
