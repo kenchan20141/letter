@@ -4057,8 +4057,7 @@ function auditAntiCheat() {
                             db.ref(`user_threads/${currentUser.uid}/${rId}`).set({ letterId: rId, type: 'random', bookTitle: lData.bookTitle, isSender: false, hasUnread: true, hasReplied: false, lastUpdated: now });
                             db.ref(`user_threads/${lData.senderUid}/${rId}`).set({ letterId: rId, type: 'random', bookTitle: lData.bookTitle, isSender: true, hasUnread: false, hasBeenRepliedTo: false, hasReplied: false, lastUpdated: now });
                             
-                            db.ref(`users/${currentUser.uid}/receivedRandomCount`).transaction(count => (count || 0) + 1);
-                            db.ref(`user_meta/${currentUser.uid}/receivedRandomCount`).transaction(count => (count || 0) + 1); 
+            
                         }
                     });
                 }
@@ -4780,9 +4779,9 @@ else processReply(letterId, partnerUid, ObjectData);
         });
         
         let rec = "";
-       if (eligibleUids.length > 0) {
+      if (eligibleUids.length > 0) {
             if (selectedTaskIndex === 'free') {
-                // 【自由分享】：只在這裡套用「最近上線」排序機制
+                // 【自由分享】：改為隨機派發給近期活躍玩家，且「不增加」收信量
                 eligibleUids.sort((a, b) => {
                     let timeA = parseInt(users[a].lastLoginTime) || 0;
                     let timeB = parseInt(users[b].lastLoginTime) || 0;
@@ -4791,12 +4790,10 @@ else processReply(letterId, partnerUid, ObjectData);
                 let top3Pool = eligibleUids.slice(0, 3);
                 rec = top3Pool[Math.floor(Math.random() * top3Pool.length)];
                 
-                if (rec) {
-                    db.ref(`users/${rec}/receivedCount`).transaction(c => (c || 0) + 1);
-                    db.ref(`user_meta/${rec}/receivedCount`).transaction(c => (c || 0) + 1); 
-                }
+                // 刪除了 transaction 增加收信數的程式碼
+                
             } else {
-                // 【一般閱讀任務】：絕對公平分配，不再受上線時間排序干擾
+                // 【一般閱讀任務】：絕對公平分配給收信量最少的人（維持原狀）
                 let minCount = Infinity; 
                 eligibleUids.forEach(uid => { 
                     let count = parseInt(users[uid].receivedCount) || 0; 
@@ -4810,7 +4807,7 @@ else processReply(letterId, partnerUid, ObjectData);
                 
                 if (candidates.length > 0) {
                     rec = candidates[Math.floor(Math.random() * candidates.length)];
-                    
+                    // 只有一般閱讀任務才會增加收信量
                     db.ref(`users/${rec}/receivedCount`).transaction(c => (c || 0) + 1);
                     db.ref(`user_meta/${rec}/receivedCount`).transaction(c => (c || 0) + 1);
                 }
@@ -4881,25 +4878,18 @@ function processRandomTask(data) {
         db.ref(`users/${currentUser.uid}/lastSentTime`).set(ts);
 
         let rec = "";
-     if (eligibleUids.length > 0) {
-            // 【探索任務】：絕對公平分配，不受上線時間干擾
-            let minCount = Infinity; 
-            eligibleUids.forEach(uid => { 
-                let count = parseInt(users[uid].receivedRandomCount) || 0; 
-                if (count < minCount) minCount = count; 
+    if (eligibleUids.length > 0) {
+            // 【探索任務】：不看收信量，改為隨機派發給最近活躍的玩家，且不增加收信數字
+            eligibleUids.sort((a, b) => {
+                let timeA = parseInt(users[a].lastLoginTime) || 0;
+                let timeB = parseInt(users[b].lastLoginTime) || 0;
+                return timeB - timeA; 
             });
+            // 從最近上線的 5 個人中隨機挑選 1 人
+            let topPool = eligibleUids.slice(0, 5); 
+            rec = topPool[Math.floor(Math.random() * topPool.length)];
             
-            let candidates = eligibleUids.filter(uid => {
-                let c = parseInt(users[uid].receivedRandomCount) || 0;
-                return c === minCount;
-            });
-            
-            if (candidates.length > 0) {
-                rec = candidates[Math.floor(Math.random() * candidates.length)];
-                
-                db.ref(`users/${rec}/receivedRandomCount`).transaction(c => (c || 0) + 1);
-                db.ref(`user_meta/${rec}/receivedRandomCount`).transaction(c => (c || 0) + 1);
-            }
+            // 刪除了 transaction 增加 receivedRandomCount 的程式碼
         }
 
         subRef.set({
