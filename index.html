@@ -4780,14 +4780,14 @@ else processReply(letterId, partnerUid, ObjectData);
         });
         
         let rec = "";
-        if (eligibleUids.length > 0) {
-            eligibleUids.sort((a, b) => {
-                let timeA = parseInt(users[a].lastLoginTime) || 0;
-                let timeB = parseInt(users[b].lastLoginTime) || 0;
-                return timeB - timeA; 
-            });
-
+       if (eligibleUids.length > 0) {
             if (selectedTaskIndex === 'free') {
+                // 【自由分享】：只在這裡套用「最近上線」排序機制
+                eligibleUids.sort((a, b) => {
+                    let timeA = parseInt(users[a].lastLoginTime) || 0;
+                    let timeB = parseInt(users[b].lastLoginTime) || 0;
+                    return timeB - timeA; 
+                });
                 let top3Pool = eligibleUids.slice(0, 3);
                 rec = top3Pool[Math.floor(Math.random() * top3Pool.length)];
                 
@@ -4796,18 +4796,16 @@ else processReply(letterId, partnerUid, ObjectData);
                     db.ref(`user_meta/${rec}/receivedCount`).transaction(c => (c || 0) + 1); 
                 }
             } else {
-                let top30Pool = eligibleUids.slice(0, 30);
-                
+                // 【一般閱讀任務】：絕對公平分配，不再受上線時間排序干擾
                 let minCount = Infinity; 
-                top30Pool.forEach(uid => { 
+                eligibleUids.forEach(uid => { 
                     let count = parseInt(users[uid].receivedCount) || 0; 
                     if (count < minCount) minCount = count; 
                 });
                 
-              // 💡 【嚴格公平機制】：嚴格優先分配給收信數「最低」的同學
-                let candidates = top30Pool.filter(uid => {
+                let candidates = eligibleUids.filter(uid => {
                     let c = parseInt(users[uid].receivedCount) || 0;
-                    return c === minCount; // 移除 +1，嚴格限制只給最低的人
+                    return c === minCount; 
                 });
                 
                 if (candidates.length > 0) {
@@ -4883,25 +4881,17 @@ function processRandomTask(data) {
         db.ref(`users/${currentUser.uid}/lastSentTime`).set(ts);
 
         let rec = "";
-        if (eligibleUids.length > 0) {
-            eligibleUids.sort((a, b) => {
-                let timeA = parseInt(users[a].lastLoginTime) || 0;
-                let timeB = parseInt(users[b].lastLoginTime) || 0;
-                return timeB - timeA;
-            });
-
-            let top30Pool = eligibleUids.slice(0, 30);
-
+     if (eligibleUids.length > 0) {
+            // 【探索任務】：絕對公平分配，不受上線時間干擾
             let minCount = Infinity; 
-            top30Pool.forEach(uid => { 
+            eligibleUids.forEach(uid => { 
                 let count = parseInt(users[uid].receivedRandomCount) || 0; 
                 if (count < minCount) minCount = count; 
             });
             
-          // 💡 【嚴格公平機制】：嚴格優先分配給探索收信數「最低」的同學
-            let candidates = top30Pool.filter(uid => {
+            let candidates = eligibleUids.filter(uid => {
                 let c = parseInt(users[uid].receivedRandomCount) || 0;
-                return c === minCount; // 同樣移除 +1
+                return c === minCount;
             });
             
             if (candidates.length > 0) {
