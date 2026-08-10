@@ -4708,11 +4708,17 @@ window.openFreeReadingEditor = function() {
                         </div>`;
                     });
 
-             if (canReply) {
+         if (canReply) {
+                        // 👇 判斷目前使用者是否為這封信的「原作者」
+                        const isLetterOwner = (currentUser.uid === l.senderUid);
+                        
                         let canType = isTypingAllowed(currentUser.email);
                         let hwClass = canType ? '' : 'handwrite-only';
                         let roAttr = canType ? '' : 'readonly';
-                        let placeholderText = canType ? '請輸入您的回音...（最少 100 字）' : '點此喚出全螢幕書寫板，一筆一劃寫下您的回音...（最少 100 字）';
+                        
+                        // 👇 判斷：如果是原作者回信，取消「最少100字」的提示字眼
+                        let limitText = isLetterOwner ? '' : '（最少 100 字）';
+                        let placeholderText = canType ? `請輸入您的回音...${limitText}` : `點此喚出全螢幕書寫板，一筆一劃寫下您的回音...${limitText}`;
 
                        contentHTML += `<div class="letter-sheet reply-sheet my-letter">
     <div class="letter-header-meta">
@@ -4751,8 +4757,7 @@ window.openFreeReadingEditor = function() {
 
                         // 安全檢查：確保真的有找到輸入框才綁定事件
                         if (replyInput) {
-
-                        if (!isTypingAllowed(currentUser.email)) {
+                            if (!isTypingAllowed(currentUser.email)) {
                                 replyInput.addEventListener('click', function() { openHwKeyboard(this); });
                             }
                             
@@ -4770,14 +4775,22 @@ window.openFreeReadingEditor = function() {
 
                         // 安全檢查：確保真的有找到按鈕才綁定事件
                         if (btnSend) {
+                            // 👇 再次判斷，給按鈕點擊事件使用
+                            const isLetterOwner = (currentUser.uid === l.senderUid);
+                            
                             btnSend.onclick = () => {
                                 const txt = replyInput ? replyInput.value.trim() : ''; 
-                               if (!txt || txt.length < 100) return showToast(`✍️ 回覆最少需要 100 字，目前僅有 ${txt.length} 字。`);
                                 
-                             const pId = window.selectedStationery.reply.paper;
+                                // 👇 針對字數限制進行分流判斷
+                                if (!txt) return showToast("✍️ 回覆內容不能為空。");
+                                if (!isLetterOwner && txt.length < 100) {
+                                    return showToast(`✍️ 首次回覆最少需要 100 字，目前僅有 ${txt.length} 字。`);
+                                }
+                                
+                                const pId = window.selectedStationery.reply.paper;
                                 const iId = window.selectedStationery.reply.ink;
                                 
-                             playAnim('reply', id, partnerUid, { text: txt, quoteId: currentAttachedQuoteId, paperId: pId, inkId: iId });
+                                playAnim('reply', id, partnerUid, { text: txt, quoteId: currentAttachedQuoteId, paperId: pId, inkId: iId });
                                 
                                 // 送出後清除這封信的回信草稿
                                 sessionStorage.removeItem('draft_reply_' + id);
