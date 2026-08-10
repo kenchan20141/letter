@@ -13759,7 +13759,11 @@ streetScene.fog = new THREE.Fog(p.fog, 1000, 10000);
 
         
 // 處理商店點擊事件 (基於獨立場景)
+// 處理商店點擊事件 (基於獨立場景)
 window.addEventListener('pointerup', (e) => {
+    // 👇 新增這行：防穿透保護！如果點擊的是 HTML 介面（如按鈕），就直接中斷，不觸發 3D 點擊
+    if (e.target.tagName !== 'CANVAS') return;
+    
     if(!isAtStreet || isDragging || !streetScene) return;
     mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
@@ -13798,14 +13802,14 @@ window.addEventListener('pointerup', (e) => {
             document.body.insertAdjacentHTML('beforeend', '<div style="position:fixed; inset:0; background:#000; z-index:999999; opacity:0; transition:opacity 1s;" id="bus-fade"></div>');
             setTimeout(() => document.getElementById('bus-fade').style.opacity = 1, 10);
             
-            // 👇 修復：絕對不能在這裡提早把位置改為房間！加入 busRideActive 標籤，並保持原位置
+            // 絕對不能在這裡提早把位置改為房間！加入 busRideActive 標籤，並保持原位置
             sessionStorage.setItem('busRideActive', 'true');
             setTimeout(() => {
                 const fromLoc = localStorage.getItem('cachedLocation') || 'street';
                 window.location.href = `?returnTrip=true&from=${fromLoc}`;
             }, 1000);
         }
-    } // <-- 確保 intersects.length > 0 在這裡才正確關閉
+    } 
 });
 
 
