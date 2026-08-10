@@ -3087,19 +3087,16 @@ window.buyStationery = function(type, id, price) {
         // 計算新的擁有數量
         const newCount = (typeof userInventory[fullId] === 'number' ? userInventory[fullId] : (userInventory[fullId] ? 1 : 0)) + 1;
         
-        // 🛡️ 將扣積分與存道具打包成一個原子更新，防止中途跳轉導致資料遺失
+        // 🛡️ 打包成一個原子更新，送出給伺服器
         let updates = {};
         updates[`users/${currentUser.uid}/points`] = userPoints - price;
         updates[`users/${currentUser.uid}/inventory/${fullId}`] = newCount;
         
         db.ref().update(updates).then(() => {
-            // 寫入成功後再同步本地變數
-            userPoints -= price;
-            userInventory[fullId] = newCount;
-            
+            // 💡 修正：移除手動 userPoints -= price，因為 Firebase 背景監聽會自動同步最新分數
             showToast(`🛒 購買成功！您目前擁有 ${newCount} 份。`);
-            document.getElementById('user-points-text').innerText = userPoints;
-            renderStationeryShop(); // 重新渲染商店顯示最新數量
+            // 重新渲染商店，按鈕與數量會自動抓取 Firebase 同步好的最新狀態
+            renderStationeryShop(); 
         }).catch(err => {
             alert("購買失敗，請檢查網絡連線：" + err.message);
         });
@@ -3629,18 +3626,14 @@ window.buyRecord = function(id, price) {
     if (userInventory[id]) return alert("您已經擁有此唱片了！");
     
     if(confirm(`確認花費 ${price} 積分購買 ${RECORD_REGISTRY[id].name} 嗎？`)) {
-        // 🛡️ 同樣使用打包更新機制
+        // 🛡️ 打包更新機制
         let updates = {};
         updates[`users/${currentUser.uid}/points`] = userPoints - price;
         updates[`users/${currentUser.uid}/inventory/${id}`] = true;
         
         db.ref().update(updates).then(() => {
-            // 同步更新本地變數
-            userPoints -= price;
-            userInventory[id] = true;
-            
+            // 💡 修正：同樣移除手動扣分的程式碼，交給 Firebase 自動同步
             showToast("🛒 購買成功！您現在可以隨時播放這首歌曲。");
-            document.getElementById('user-points-text').innerText = userPoints;
             renderRecordShop(); 
             initMusicPlayer(); // 刷新播放清單
         }).catch(err => {
