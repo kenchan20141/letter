@@ -902,9 +902,9 @@ auth.onAuthStateChanged(user => {
                 localStorage.setItem('cachedLocation', data.lastLocation);
             }
             
-            // 🛡️ 權限檢查 1：沒有「修繕趟門 (door_use)」權限，全部擋下 (包含老師)
-            if (!inventory['door_use']) {
-                alert("🚪 露台的趟門仍未修繕，您還無法出門搭車。\n請在房間內努力收集積分以獲取「修繕趟門」的權限。");
+            // 🛡️ 權限檢查 1：沒有「黃銅大門鑰匙 (main_door_key)」權限，全部擋下 (包含老師)
+            if (!inventory['main_door_key']) {
+                alert("🚪 大門被生鏽的黃銅鎖鎖上了，您還無法出門搭車。\n請在房間內努力完成任務以獲取「黃銅大門鑰匙」的權限。");
                 window.location.href = 'index.html';
                 return;
             }
@@ -928,7 +928,6 @@ auth.onAuthStateChanged(user => {
         window.location.href = 'index.html'; 
     }
 });
-
 
         
         // ==========================================
