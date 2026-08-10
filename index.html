@@ -3084,15 +3084,24 @@ window.buyStationery = function(type, id, price) {
     const fullId = `${type}_${id}`;
     
     if(confirm(`確認花費 ${price} 積分購買 1 份 ${type === 'paper' ? PAPER_REGISTRY[id].name : INK_REGISTRY[id].name} 嗎？`)) {
-        userPoints -= price;
-        // 將庫存數值加 1 (相容舊版 boolean)
-        userInventory[fullId] = (typeof userInventory[fullId] === 'number' ? userInventory[fullId] : (userInventory[fullId] ? 1 : 0)) + 1;
+        // 計算新的擁有數量
+        const newCount = (typeof userInventory[fullId] === 'number' ? userInventory[fullId] : (userInventory[fullId] ? 1 : 0)) + 1;
         
-        db.ref(`users/${currentUser.uid}/points`).set(userPoints);
-        db.ref(`users/${currentUser.uid}/inventory/${fullId}`).set(userInventory[fullId]).then(() => {
-            showToast(`🛒 購買成功！您目前擁有 ${userInventory[fullId]} 份。`);
+        // 🛡️ 將扣積分與存道具打包成一個原子更新，防止中途跳轉導致資料遺失
+        let updates = {};
+        updates[`users/${currentUser.uid}/points`] = userPoints - price;
+        updates[`users/${currentUser.uid}/inventory/${fullId}`] = newCount;
+        
+        db.ref().update(updates).then(() => {
+            // 寫入成功後再同步本地變數
+            userPoints -= price;
+            userInventory[fullId] = newCount;
+            
+            showToast(`🛒 購買成功！您目前擁有 ${newCount} 份。`);
             document.getElementById('user-points-text').innerText = userPoints;
             renderStationeryShop(); // 重新渲染商店顯示最新數量
+        }).catch(err => {
+            alert("購買失敗，請檢查網絡連線：" + err.message);
         });
     }
 };
@@ -3614,24 +3623,31 @@ function renderRecordShop() {
 }
 
 // 2. 購買唱片
+// 2. 購買唱片
 window.buyRecord = function(id, price) {
     if (userPoints < price) return alert("積分不足！請多寫信與探索來賺取積分。");
     if (userInventory[id]) return alert("您已經擁有此唱片了！");
     
     if(confirm(`確認花費 ${price} 積分購買 ${RECORD_REGISTRY[id].name} 嗎？`)) {
-        userPoints -= price;
-        userInventory[id] = true;
+        // 🛡️ 同樣使用打包更新機制
+        let updates = {};
+        updates[`users/${currentUser.uid}/points`] = userPoints - price;
+        updates[`users/${currentUser.uid}/inventory/${id}`] = true;
         
-        db.ref(`users/${currentUser.uid}/points`).set(userPoints);
-        db.ref(`users/${currentUser.uid}/inventory/${id}`).set(true).then(() => {
+        db.ref().update(updates).then(() => {
+            // 同步更新本地變數
+            userPoints -= price;
+            userInventory[id] = true;
+            
             showToast("🛒 購買成功！您現在可以隨時播放這首歌曲。");
             document.getElementById('user-points-text').innerText = userPoints;
             renderRecordShop(); 
             initMusicPlayer(); // 刷新播放清單
+        }).catch(err => {
+            alert("購買失敗，請檢查網絡連線：" + err.message);
         });
     }
 };
-
 
 // ==========================================
 // 🎧 音樂播放器核心邏輯 (完美還原詞海拾心)
