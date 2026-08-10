@@ -3184,6 +3184,7 @@ function consumeStationery(paperId, inkId) {
 
         
 // 點擊卡片確認選用
+// 點擊卡片確認選用
 window.confirmStationerySelection = function(id) {
     // 儲存狀態
     window.selectedStationery[currentStationeryContext][currentStationeryType] = id;
@@ -3195,14 +3196,60 @@ window.confirmStationerySelection = function(id) {
     
     if (btn) {
         btn.innerHTML = `${icon} ${registry[id].name}`;
-        btn.style.borderColor = '#d4af37'; // 選完後給按鈕一個提示色
+        btn.style.borderColor = '#d4af37'; 
         btn.style.color = '#8b7355';
+    }
+    
+    // 👇 實時套用文具樣式到編輯器與手寫板
+    if (typeof applyLiveStationeryStyle === 'function') {
+        applyLiveStationeryStyle(currentStationeryContext);
     }
     
     // 關閉視窗
     document.getElementById('modal-stationery-selector').style.display = 'none';
 };
 
+// 👇 新增：負責實時更改背景與文字顏色的核心函數
+window.applyLiveStationeryStyle = function(context) {
+    const paperId = window.selectedStationery[context].paper || 'default';
+    const inkId = window.selectedStationery[context].ink || 'default';
+    const paperClass = PAPER_REGISTRY[paperId] ? PAPER_REGISTRY[paperId].cssClass : '';
+    const inkColor = INK_REGISTRY[inkId] ? INK_REGISTRY[inkId].color : '#4a4238';
+
+    // 將筆觸顏色設定到全域，給手寫板 drawStroke 使用
+    window.currentHwInkColor = inkColor;
+
+    // 準備要清除的舊樣式
+    const allPaperClasses = Object.values(PAPER_REGISTRY).map(p => p.cssClass).filter(c => c);
+
+    // 1. 更新主編輯器 (寫新信 或 回信)
+    let editorEl = null;
+    if (context === 'write') {
+        editorEl = document.getElementById('write-editor');
+    } else if (context === 'reply') {
+        editorEl = document.querySelector('.reply-sheet');
+    }
+
+    if (editorEl) {
+        editorEl.classList.remove(...allPaperClasses);
+        if (paperClass) editorEl.classList.add(paperClass);
+
+        // 強制更改輸入框與標題文字顏色
+        const inputs = editorEl.querySelectorAll('.input-box, .textarea, .field-label, h3, span');
+        inputs.forEach(el => {
+            el.style.setProperty('color', inkColor, 'important');
+        });
+    }
+
+    // 2. 更新全螢幕手寫板 (如果有打開的話)
+    const hwArea = document.querySelector('.hw-letter-area');
+    const hwPreview = document.getElementById('hw-preview');
+    if (hwArea && hwPreview) {
+        hwArea.classList.remove(...allPaperClasses);
+        if (paperClass) hwArea.classList.add(paperClass);
+        hwPreview.style.setProperty('color', inkColor, 'important');
+    }
+};
 
         
 
@@ -4759,7 +4806,7 @@ else processReply(letterId, partnerUid, ObjectData);
             }});
         }
 
-    function processLog(data) {
+  function processLog(data) {
     const ts = firebase.database.ServerValue.TIMESTAMP; 
     const ref = db.ref('letters').push();
     
@@ -4775,9 +4822,8 @@ else processReply(letterId, partnerUid, ObjectData);
         });
         
         let rec = "";
-      if (eligibleUids.length > 0) {
+        if (eligibleUids.length > 0) {
             if (selectedTaskIndex === 'free') {
-                // 【自由分享】：改為隨機派發給近期活躍玩家，且「不增加」收信量
                 eligibleUids.sort((a, b) => {
                     let timeA = parseInt(users[a].lastLoginTime) || 0;
                     let timeB = parseInt(users[b].lastLoginTime) || 0;
@@ -4785,11 +4831,7 @@ else processReply(letterId, partnerUid, ObjectData);
                 });
                 let top3Pool = eligibleUids.slice(0, 3);
                 rec = top3Pool[Math.floor(Math.random() * top3Pool.length)];
-                
-                // 刪除了 transaction 增加收信數的程式碼
-                
             } else {
-                // 【一般閱讀任務】：絕對公平分配給收信量最少的人（維持原狀）
                 let minCount = Infinity; 
                 eligibleUids.forEach(uid => { 
                     let count = parseInt(users[uid].receivedCount) || 0; 
@@ -4803,7 +4845,6 @@ else processReply(letterId, partnerUid, ObjectData);
                 
                 if (candidates.length > 0) {
                     rec = candidates[Math.floor(Math.random() * candidates.length)];
-                    // 只有一般閱讀任務才會增加收信量
                     db.ref(`users/${rec}/receivedCount`).transaction(c => (c || 0) + 1);
                     db.ref(`user_meta/${rec}/receivedCount`).transaction(c => (c || 0) + 1);
                 }
@@ -4825,11 +4866,16 @@ else processReply(letterId, partnerUid, ObjectData);
             
             db.ref(`conversations/${ref.key}`).push({ senderUid: currentUser.uid, text: data.text, imageUrl: data.imageUrl, attachedQuoteId: data.quoteId || null, paperId: data.paperId || 'default', inkId: data.inkId || 'default', timestamp: ts }).then(() => {
                 consumeStationery(data.paperId, data.inkId);
+                
+                // 恢復文具選擇為預設狀態
                 window.selectedStationery.write = { paper: 'default', ink: 'default' };
                 const btnWritePaper = document.getElementById('btn-write-paper');
                 if (btnWritePaper) { btnWritePaper.innerHTML = `📜 預設宣紙`; btnWritePaper.style.borderColor = '#dcd5c9'; btnWritePaper.style.color = '#4a4238'; }
                 const btnWriteInk = document.getElementById('btn-write-ink');
                 if (btnWriteInk) { btnWriteInk.innerHTML = `🖋️ 預設墨褐`; btnWriteInk.style.borderColor = '#dcd5c9'; btnWriteInk.style.color = '#4a4238'; }
+                
+                // 👇 強制還原編輯器與手寫板的視覺
+                if (typeof applyLiveStationeryStyle === 'function') applyLiveStationeryStyle('write');
                 
                 removeAttachedQuote();
                 isSubmittingLog = false; 
@@ -4923,14 +4969,13 @@ function processRandomTask(data) {
 }
         
 
-      function processReply(id, pUid, ObjectData) {
+    function processReply(id, pUid, ObjectData) {
     const ts = firebase.database.ServerValue.TIMESTAMP;
     
     db.ref(`user_threads/${currentUser.uid}/${id}/hasReplied`).once('value').then(snap => {
         const isFirstReply = !snap.val();
         
-        // 👇 寫入 text 與 attachedQuoteId
-     db.ref(`conversations/${id}`).push({
+        db.ref(`conversations/${id}`).push({
             senderUid: currentUser.uid,
             text: ObjectData.text,
             attachedQuoteId: ObjectData.quoteId || null,
@@ -4942,11 +4987,14 @@ function processRandomTask(data) {
             db.ref(`user_threads/${currentUser.uid}/${id}`).update({ hasUnread: false, hasReplied: true, lastUpdated: ts }).then(() => {
                 isSubmittingReply = false;
                 
-                // 👇 新增這段：扣除消耗品，並重置回信介面的文具選擇
                 consumeStationery(ObjectData.paperId, ObjectData.inkId);
-                window.selectedStationery.reply = { paper: 'default', ink: 'default' };
                 
-                removeAttachedQuote(); // 寄出後清除語錄狀態
+                // 重置回信文具設定
+                window.selectedStationery.reply = { paper: 'default', ink: 'default' };
+                // 👇 強制還原回信編輯器視覺
+                if (typeof applyLiveStationeryStyle === 'function') applyLiveStationeryStyle('reply');
+                
+                removeAttachedQuote(); 
                 closeChatModal();
                 showToast("回信已成功寄出！");
                 
@@ -4957,7 +5005,6 @@ function processRandomTask(data) {
         });
     });
 }
-
    
 
       async function submitLog() {
@@ -9978,10 +10025,9 @@ function animateRoom() {
 }
 
 function drawStroke(e) { 
-    if (e.cancelable) e.preventDefault(); // <--- 加上 cancelable 判斷
+    if (e.cancelable) e.preventDefault(); 
     let touch = e.touches ? e.touches[0] : e; 
     
-    // 處理長按滑動
     if (isHoldScrolling) { 
         let deltaY = startY - touch.clientY; 
         document.getElementById('hw-preview').scrollTop = startScrollTop + deltaY; 
@@ -9995,38 +10041,33 @@ function drawStroke(e) {
     const pos = getPointerPos(touch); 
     const now = Date.now();
     
-    // 收集給 Google 辨識 API 的資料 (不可改動)
     currentStroke[0].push(pos.x); 
     currentStroke[1].push(pos.y); 
     currentStroke[2].push(now); 
 
-    // === 筆觸粗幼運算開始 ===
     const dx = pos.x - lastHwPoint.x;
     const dy = pos.y - lastHwPoint.y;
-    const dt = Math.max(1, now - lastHwPoint.time); // 避免除以 0
+    const dt = Math.max(1, now - lastHwPoint.time); 
     const distance = Math.sqrt(dx * dx + dy * dy);
+    const velocity = distance / dt; 
     
-    const velocity = distance / dt; // 計算移動速度
-    
-    // 根據速度計算目標線寬 (速度快 -> 最細 1.5px；速度慢 -> 最粗 6.5px)
     const targetWidth = Math.max(1.5, Math.min(6.5, 6.5 - velocity * 3.5));
-    
-    // 平滑過渡：讓線條粗細漸變，不要突然變粗變細
     lastHwWidth = lastHwWidth * 0.7 + targetWidth * 0.3;
 
-    // 畫出這一段線條
     hwCtx.beginPath();
     hwCtx.moveTo(lastHwPoint.x, lastHwPoint.y);
     hwCtx.lineTo(pos.x, pos.y);
     hwCtx.lineCap = "round";
     hwCtx.lineJoin = "round";
     hwCtx.lineWidth = lastHwWidth;
-    hwCtx.strokeStyle = "rgba(74, 66, 56, 0.88)"; // 微微透墨的深茶色
+    
+    // 👇 實時套用所選的墨水顏色
+    hwCtx.strokeStyle = window.currentHwInkColor || "rgba(74, 66, 56, 0.88)"; 
     hwCtx.stroke();
     
-    // 記錄當前狀態，給下一次繪製使用
     lastHwPoint = { x: pos.x, y: pos.y, time: now };
 }
+        
         function endStroke(e) { clearTimeout(holdTimer); hwCanvas.style.background = "transparent"; if (isHoldScrolling) { isHoldScrolling = false; return; } if (!isDrawing) return; isDrawing = false; if (currentStroke[0].length > 0) strokes.push(currentStroke); hwTimeout = setTimeout(recognizeHandwriting, 400); }
 
         function recognizeHandwriting() {
@@ -10038,7 +10079,28 @@ function drawStroke(e) {
 
         function clearHwCanvas() { strokes = []; hwCtx.clearRect(0, 0, hwCanvas.width, hwCanvas.height); }
 
-        function openHwKeyboard(targetInput) { if(!targetInput.classList.contains('handwrite-only')) return; activeHwInput = targetInput; document.getElementById('hw-overlay').classList.add('active'); const preview = document.getElementById('hw-preview'); preview.value = activeHwInput.value; setTimeout(() => { preview.scrollTop = preview.scrollHeight; }, 50); lockScroll(); clearHwCanvas(); setTimeout(() => { const rect = hwCanvas.parentElement.getBoundingClientRect(); if(hwCanvas.width !== rect.width) { hwCanvas.width = rect.width; hwCanvas.height = rect.height; hwCtx.lineCap = "round"; hwCtx.lineJoin = "round";} }, 100); }
+       function openHwKeyboard(targetInput) { 
+    if(!targetInput.classList.contains('handwrite-only')) return; 
+    activeHwInput = targetInput; 
+
+    // 👇 判斷是寫信還是回信，動態載入對應的信紙與墨水顏色
+    const ctx = (targetInput.id === 'reply-text') ? 'reply' : 'write';
+    if (typeof applyLiveStationeryStyle === 'function') applyLiveStationeryStyle(ctx);
+
+    document.getElementById('hw-overlay').classList.add('active'); 
+    const preview = document.getElementById('hw-preview'); 
+    preview.value = activeHwInput.value; 
+    setTimeout(() => { preview.scrollTop = preview.scrollHeight; }, 50); 
+    lockScroll(); 
+    clearHwCanvas(); 
+    setTimeout(() => { 
+        const rect = hwCanvas.parentElement.getBoundingClientRect(); 
+        if(hwCanvas.width !== rect.width) { 
+            hwCanvas.width = rect.width; hwCanvas.height = rect.height; 
+            hwCtx.lineCap = "round"; hwCtx.lineJoin = "round";
+        } 
+    }, 100); 
+}
         function closeHwKeyboard() { document.getElementById('hw-overlay').classList.remove('active'); clearHwCanvas(); unlockScroll(); }
        function insertChar(char) { 
     if (!activeHwInput) return; 
