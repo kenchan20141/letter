@@ -3249,7 +3249,7 @@ const COPY_EXCERPTS = [
     {
         author: "蘇童",
         source: "妻妾成群",
-        text: "頌蓮朝井邊走去，她的身體無比輕盈，好像在夢中行路一般，有一股植物腐爛的氣息彌漫井台四周，頌蓮從地上揀起一片紫藤葉子細看了看，把它扔進井裏。她看見葉子像一片飾物浮在幽籃的死水之上，把她的浮影遮蓋了一塊，她竟然看不見自己的眼睛。頌蓮繞著井台轉了一圈，始終找不到一個角度看見自己，她覺得這很奇怪，一片紫藤葉子，她想，怎麽會？"
+        text: "頌蓮朝井邊走去，她的身體無比輕盈，好像在夢中行路一般，有一股植物腐爛的氣息彌漫井台四周，頌蓮從地上揀起一片紫藤葉子細看了看，把它扔進井裏。她看見葉子像一片飾物浮在幽藍的死水之上，把她的浮影遮蓋了一塊，她竟然看不見自己的眼睛。頌蓮繞著井台轉了一圈，始終找不到一個角度看見自己，她覺得這很奇怪，一片紫藤葉子，她想，怎麽會？"
     },
     {
         author: "蘇童",
@@ -3591,8 +3591,9 @@ window.preloadNextHanzi = function(chars, startIndex) {
 };
 
 // 標點符號正則表達式 (遇到這些自動跳過不需抄寫)
-const puncRegex = /[，。！？、：；「」『』（）《》〈〉]/;
-
+// 標點符號正則表達式 (遇到這些自動跳過不需抄寫)
+// 👉 關鍵修復：加入 \s(涵蓋空白與換行)、\d(數字)、a-zA-Z(英文) 與 常見英式標點與破折號
+const puncRegex = /[，。！？、：；「」『』（）《》〈〉…—\-\s\da-zA-Z,.\?!;:"']/;
 
 // 2. 啟動抄寫任務 (展開目錄)
 window.startCopyTask = function() {
@@ -3705,16 +3706,18 @@ function loadHanziChar(char) {
         strokeColor: '#d4af37', 
         outlineColor: '#e6dfd1', 
         drawingColor: '#4a4238', 
-        charDataLoader: function(char, onComplete) {
-            // 👉 直接從快取拿取預載任務，如果還沒預載過就現場發起任務
+       charDataLoader: function(char, onComplete) {
             if (!hanziCache[char]) {
                 hanziCache[char] = fetchHanziData(char);
             }
             
-            // 任務完成後，將資料交給 Hanzi Writer
             hanziCache[char]
-                .then(data => onComplete(data))
-                .catch(() => onComplete(null)); // 真的抓不到(生僻字)，回傳 null
+                .then(data => {
+                    // 👉 關鍵修復：每次都使用深拷貝複製一份乾淨的資料給 HanziWriter
+                    // 這樣就不會因為上一次的座標修改，導致第二次寫同一個字時消失不見
+                    onComplete(JSON.parse(JSON.stringify(data)));
+                })
+                .catch(() => onComplete(null));
         },
         onLoadCharDataError: function(reason) {
             console.warn(`字庫無此字「${char}」，自動跳過。`);
